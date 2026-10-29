@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
 import ThemeSelector from './components/ThemeSelector';
 import NewTransactionModal from './components/NewTransactionModal';
+import EditTransactionModal from './components/EditTransactionModal';
 import NewGoalModal from './components/NewGoalModal';
 import EditGoalModal from './components/EditGoalModal';
 import ManageGoalMoneyModal from './components/ManageGoalMoneyModal';
@@ -40,6 +41,7 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   // Filtros de Transações
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -106,7 +108,6 @@ export default function Home() {
     setLoadingGoals(false);
   };
 
-  // Solicita confirmação visual para excluir transação
   const promptDeleteTransaction = (tx: Transaction) => {
     setConfirmDeleteConfig({
       isOpen: true,
@@ -121,7 +122,6 @@ export default function Home() {
     });
   };
 
-  // Solicita confirmação visual para excluir caixinha
   const promptDeleteGoal = (goal: Goal) => {
     setOpenDropdownGoalId(null);
     setConfirmDeleteConfig({
@@ -278,7 +278,6 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Cálculos financeiros consolidados
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount), 0);
@@ -288,8 +287,6 @@ export default function Home() {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const currentBalance = totalIncome - totalExpense;
-
-  // Soma de todo o dinheiro acumulado em caixinhas
   const totalInGoals = goals.reduce((acc, g) => acc + Number(g.current_amount || 0), 0);
 
   const filteredTransactions = useMemo(() => {
@@ -300,6 +297,37 @@ export default function Home() {
       return matchesType && matchesCategory && matchesSearch;
     });
   }, [transactions, filterType, filterCategory, searchTerm]);
+
+  // Exportação para arquivo CSV
+  const handleExportCSV = () => {
+    const listToExport = filteredTransactions.length > 0 ? filteredTransactions : transactions;
+
+    if (listToExport.length === 0) {
+      alert('Não há movimentações para exportar.');
+      return;
+    }
+
+    const headers = ['Título', 'Tipo', 'Categoria', 'Valor (R$)', 'Data'];
+    const rows = listToExport.map((t) => [
+      `"${t.title.replace(/"/g, '""')}"`,
+      t.type === 'income' ? 'Entrada' : 'Saída',
+      `"${t.category}"`,
+      Number(t.amount).toFixed(2).replace('.', ','),
+      t.date,
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `horizon_finances_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   if (loading || checkingProfile) {
     return (
@@ -406,7 +434,6 @@ export default function Home() {
 
       {/* Cards de Métricas Principais (4 Colunas) */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Saldo em Conta */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo em Conta</span>
           <p className={`text-2xl font-black ${currentBalance >= 0 ? 'text-[var(--text-main)]' : 'text-rose-500'}`}>
@@ -414,7 +441,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Total em Caixinhas */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--accent)]">Em Caixinhas 📦</span>
           <p className="text-2xl font-black text-[var(--accent)]">
@@ -422,7 +448,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Entradas */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-500">Entradas</span>
           <p className="text-2xl font-black text-emerald-500">
@@ -430,7 +455,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Saídas */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-rose-500">Saídas</span>
           <p className="text-2xl font-black text-rose-500">
@@ -494,7 +518,6 @@ export default function Home() {
                     <div className="flex items-center gap-2 relative">
                       <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
 
-                      {/* Menu 3 Pontinhos */}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -534,7 +557,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Barra de Progresso */}
                   <div className="w-full h-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden">
                     <div
                       className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
@@ -568,14 +590,22 @@ export default function Home() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[var(--text-main)]">Transações Recentes</h2>
-            <p className="text-xs text-[var(--text-muted)]">Filtre e pesquise suas movimentações</p>
+            <p className="text-xs text-[var(--text-muted)]">Filtre, edite e exporte suas movimentações</p>
           </div>
-          <button
-            onClick={() => setIsTxModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
-          >
-            <span>+</span> Nova Movimentação
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-[var(--bg-card)] hover:bg-[var(--accent-light)] text-[var(--text-main)] border border-[var(--border-subtle)] text-xs font-bold transition-all shadow-sm active:scale-95"
+            >
+              <span>📥</span> Exportar CSV
+            </button>
+            <button
+              onClick={() => setIsTxModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
+            >
+              <span>+</span> Nova Movimentação
+            </button>
+          </div>
         </div>
 
         {/* Barra de Filtros */}
@@ -676,7 +706,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   <span
                     className={`text-xs font-bold ${
                       tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'
@@ -685,6 +715,15 @@ export default function Home() {
                     {tx.type === 'income' ? '+' : '-'} R${' '}
                     {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
+
+                  <button
+                    onClick={() => setEditingTransaction(tx)}
+                    title="Editar movimentação"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors text-xs opacity-70 group-hover:opacity-100"
+                  >
+                    ✏️
+                  </button>
+
                   <button
                     onClick={() => promptDeleteTransaction(tx)}
                     title="Excluir movimentação"
@@ -705,6 +744,16 @@ export default function Home() {
         isOpen={isTxModalOpen}
         onClose={() => setIsTxModalOpen(false)}
         onSuccess={() => fetchTransactions(session.user.id)}
+      />
+
+      {/* Modal: Editar Transação */}
+      <EditTransactionModal
+        transaction={editingTransaction}
+        isOpen={Boolean(editingTransaction)}
+        onClose={() => setEditingTransaction(null)}
+        onSuccess={() => {
+          if (session?.user) fetchTransactions(session.user.id);
+        }}
       />
 
       {/* Modal: Nova Caixinha */}
