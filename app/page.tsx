@@ -511,13 +511,12 @@ export default function Home() {
         <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
           {/* CABEÇALHO SUPERIOR COMPACTO COM LIQUID GLASS */}
           <header className="flex-shrink-0 w-full bg-[var(--bg-surface)]/85 backdrop-blur-2xl border-b border-[var(--border-subtle)] shadow-[0_8px_32px_0_rgba(0,0,0,0.18)] z-30 transition-all">
-            {/* Linha 1: Marca & Ações Principais */}
             <div className="px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Logo size={32} />
               </div>
 
-              {/* Pílula Central Exclusiva para Desktop */}
+              {/* Pílula Central Exclusiva para Desktop (hidden md:flex) */}
               <nav
                 translate="no"
                 className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
@@ -578,45 +577,6 @@ export default function Home() {
                   className="px-2.5 sm:px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
                 >
                   Sair
-                </button>
-              </div>
-            </div>
-
-            {/* Linha 2: Pílula de Navegação Integrada ao Topo Móvel (md:hidden) */}
-            <div className="md:hidden px-3 pb-2.5 pt-0.5 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
-              <div
-                translate="no"
-                className="notranslate w-full flex items-center justify-between p-1 rounded-2xl bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-inner"
-              >
-                {navTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    translate="no"
-                    onClick={() => handleNavClick(tab.id as any)}
-                    className={`notranslate flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
-                      currentNavTab === tab.id && activeSidebarView === 'dashboard'
-                        ? 'bg-[var(--accent)] text-white shadow-sm scale-[1.02]'
-                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                    }`}
-                  >
-                    <AppleEmoji emoji={tab.emoji} size={13} />
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-
-                <button
-                  translate="no"
-                  onClick={() => setActiveSidebarView('coming_soon')}
-                  className={`notranslate flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all relative ${
-                    activeSidebarView === 'coming_soon'
-                      ? 'bg-[var(--accent)] text-white shadow-sm scale-[1.02]'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                  }`}
-                >
-                  <AppleEmoji emoji="👥" size={13} />
-                  <span className="hidden xs:inline">Metas+</span>
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />
                 </button>
               </div>
             </div>
