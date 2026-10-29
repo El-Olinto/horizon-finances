@@ -24,8 +24,15 @@ export default function ConfirmModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-sm p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in transition-colors duration-300"
+      style={{ backgroundColor: 'var(--modal-overlay)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-4 backdrop-blur-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-[var(--text-main)]">{title}</h3>
           <button

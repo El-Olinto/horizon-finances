@@ -42,7 +42,7 @@ export default function ProfileModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados de Crop
+  // Estados do Recorte
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [isCropOpen, setIsCropOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +59,6 @@ export default function ProfileModal({
 
   if (!isOpen || !profile) return null;
 
-  // Quando o usuário escolhe um arquivo no computador/celular
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -73,7 +72,6 @@ export default function ProfileModal({
     }
   };
 
-  // Faz upload do Blob recortado para o Supabase Storage
   const handleCropComplete = async (croppedBlob: Blob) => {
     setIsCropOpen(false);
     setUploadingAvatar(true);
@@ -98,7 +96,6 @@ export default function ProfileModal({
 
       const publicUrl = urlData.publicUrl;
 
-      // Salva no perfil do usuário
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ avatar_url: publicUrl })
@@ -167,12 +164,18 @@ export default function ProfileModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-        <div className="w-full max-w-lg p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+      {/* Overlay transparente com desfoque total de fundo sem nada escurecido */}
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent backdrop-blur-md animate-fade-in"
+        onClick={onClose}
+      >
+        <div 
+          className="w-full max-w-lg p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto backdrop-blur-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header do Perfil com Avatar e Botão de Foto */}
           <div className="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
             <div className="flex items-center gap-3">
-              {/* Avatar com Trigger de Upload */}
               <div className="relative group">
                 <div className="w-14 h-14 rounded-2xl bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-xl shadow-inner overflow-hidden border border-[var(--border-subtle)]">
                   {avatarUrl ? (
@@ -186,7 +189,6 @@ export default function ProfileModal({
                   )}
                 </div>
 
-                {/* Botão de Trocar Foto */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}

@@ -87,10 +87,9 @@ export default function AvatarCropModal({
     ctx.clip();
 
     const img = imageRef.current;
-    const previewSize = 250; // tamanho do círculo da UI
+    const previewSize = 250;
     const scaleRatio = size / previewSize;
 
-    // Dimensões naturais e ajustadas
     const aspect = img.naturalWidth / img.naturalHeight;
     let baseWidth = previewSize;
     let baseHeight = previewSize;
@@ -114,8 +113,15 @@ export default function AvatarCropModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="w-full max-w-sm p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5 select-none">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in transition-colors duration-300"
+      style={{ backgroundColor: 'var(--modal-overlay)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5 select-none backdrop-blur-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-[var(--text-main)]">Ajustar Foto de Perfil</h3>
           <button
@@ -138,9 +144,8 @@ export default function AvatarCropModal({
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="w-[250px] h-[250px] rounded-full overflow-hidden border-2 border-[var(--accent)] cursor-grab active:cursor-grabbing relative bg-black/40 shadow-inner flex items-center justify-center"
+            className="w-[250px] h-[250px] rounded-full overflow-hidden border-2 border-[var(--accent)] cursor-grab active:cursor-grabbing relative bg-black/20 shadow-inner flex items-center justify-center"
           >
-            {/* Imagem arrastável e com zoom */}
             <img
               ref={imageRef}
               src={imageSrc}
@@ -159,7 +164,7 @@ export default function AvatarCropModal({
         </div>
 
         <p className="text-[11px] text-center text-[var(--text-muted)]">
-          Arraste com o cursor para posicionar e use o slider para dar zoom.
+          Arraste para posicionar e use o slider para dar zoom.
         </p>
 
         {/* Slider de Zoom */}

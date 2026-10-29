@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   icons: {
     icon: '/favicon.svg?v=2',
   },
+  other: {
+    google: 'notranslate',
+  },
 };
 
 export default function RootLayout({
@@ -15,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" translate="no" className="notranslate">
       <body>{children}</body>
     </html>
   );

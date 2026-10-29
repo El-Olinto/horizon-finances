@@ -2,54 +2,140 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ==========================================
-   TEMA 1: DAY (Clean, Claro, Sky & Daylight)
-   ========================================== */
-body.theme-day {
-  --bg-main: #f0f7ff;
-  --bg-surface: #ffffff;
-  --bg-card: #f8fbff;
-  --border-subtle: #e2e8f0;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --accent: #0284c7;
-  --accent-hover: #0369a1;
-  --accent-light: #e0f2fe;
-}
-
-/* ==========================================
-   TEMA 2: INTERESTELAR (Dark, Liquid Glass, Cosmos)
-   ========================================== */
-body.theme-interestelar {
-  --bg-main: #060814;
-  --bg-surface: rgba(15, 23, 42, 0.75);
-  --bg-card: rgba(30, 41, 59, 0.55);
-  --border-subtle: rgba(148, 163, 184, 0.15);
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --accent: #818cf8;
-  --accent-hover: #6366f1;
-  --accent-light: rgba(99, 102, 241, 0.15);
-}
-
-/* ==========================================
-   TEMA 3: VINTAGE CUTE (Pastel, Nostálgico, Acolhedor)
-   ========================================== */
-body.theme-vintage_cute {
-  --bg-main: #faf5ef;
-  --bg-surface: #fffdfa;
-  --bg-card: #f5ede2;
-  --border-subtle: #e8dccb;
-  --text-main: #4a3b32;
-  --text-muted: #8c7365;
-  --accent: #e07a5f;
-  --accent-hover: #c9654b;
-  --accent-light: #fae1d9;
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 body {
-  background-color: var(--bg-main);
-  color: var(--text-main);
+  font-family: var(--font-sans);
   min-height: 100vh;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background 0.4s ease, color 0.3s ease;
+}
+
+/* =========================================================
+   1. TEMA DAY: Céu Azul com Nuvens & Liquid Glass
+========================================================= */
+body.theme-day {
+  background: 
+    radial-gradient(circle at 15% 25%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 35%),
+    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 30%),
+    radial-gradient(circle at 50% 85%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 45%),
+    linear-gradient(180deg, #1d8cf8 0%, #38bdf8 45%, #93c5fd 80%, #bae6fd 100%);
+  background-attachment: fixed;
+  color: #0f172a;
+
+  --bg-surface: rgba(255, 255, 255, 0.85);
+  --bg-card: rgba(255, 255, 255, 0.65);
+  --border-subtle: rgba(255, 255, 255, 0.9);
+  --text-main: #062b57;
+  --text-muted: #3b6188;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-light: rgba(2, 132, 199, 0.15);
+  --modal-overlay: rgba(14, 82, 150, 0.25);
+  --glass-shadow: 0 8px 32px 0 rgba(14, 82, 150, 0.18);
+  --glass-blur: blur(18px);
+}
+
+/* =========================================================
+   2. TEMA INTERESTELAR: Galáxia Profunda & Liquid Glass Dark
+========================================================= */
+body.theme-interestelar {
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.18) 0%, transparent 40%),
+    radial-gradient(circle at 80% 30%, rgba(168, 85, 247, 0.22) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(14, 165, 233, 0.15) 0%, transparent 50%),
+    linear-gradient(180deg, #030712 0%, #080f24 45%, #050b1a 100%);
+  background-attachment: fixed;
+  color: #f8fafc;
+
+  --bg-surface: rgba(11, 20, 44, 0.85);
+  --bg-card: rgba(15, 28, 60, 0.65);
+  --border-subtle: rgba(56, 189, 248, 0.3);
+  --text-main: #f8fafc;
+  --text-muted: #8bb1db;
+  --accent: #38bdf8;
+  --accent-hover: #0ea5e9;
+  --accent-light: rgba(56, 189, 248, 0.18);
+  --modal-overlay: rgba(2, 6, 23, 0.7);
+  --glass-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.55), 0 0 20px rgba(56, 189, 248, 0.1);
+  --glass-blur: blur(20px);
+}
+
+/* =========================================================
+   3. TEMA VINTAGE CUTE: Doce, Fofinho & Confortável
+========================================================= */
+body.theme-vintage_cute {
+  background-color: #FFF8F0;
+  background-image: 
+    radial-gradient(#FBCFE8 1.5px, transparent 1.5px),
+    radial-gradient(#FDE8E8 1.5px, #FFF8F0 1.5px);
+  background-size: 26px 26px;
+  background-position: 0 0, 13px 13px;
+  background-attachment: fixed;
+  color: #5C2B3E;
+
+  --bg-surface: #FFFFFF;
+  --bg-card: #FFF1F4;
+  --border-subtle: #F9A8D4;
+  --text-main: #702641;
+  --text-muted: #A3657D;
+  --accent: #FB7185;
+  --accent-hover: #F43F5E;
+  --accent-light: rgba(251, 113, 133, 0.18);
+  --modal-overlay: rgba(112, 38, 65, 0.25);
+  --glass-shadow: 0 8px 24px -4px rgba(244, 63, 94, 0.12), 0 2px 8px -2px rgba(244, 63, 94, 0.08);
+  --glass-blur: blur(0px);
+}
+
+/* Ajustes de Acabamento dos Temas */
+.theme-day section,
+.theme-day header,
+.theme-interestelar section,
+.theme-interestelar header {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Estilo Exclusivo do Vintage Cute: Bordas arredondadas e carimbos fofos */
+.theme-vintage_cute section {
+  box-shadow: var(--glass-shadow);
+  border: 2px solid #FBCFE8 !important;
+  border-radius: 28px !important;
+}
+
+.theme-vintage_cute header {
+  box-shadow: var(--glass-shadow);
+  border-bottom: 3px solid #FDA4AF !important;
+}
+
+.theme-vintage_cute aside {
+  border-right: 3px solid #FDA4AF !important;
+}
+
+.theme-vintage_cute input,
+.theme-vintage_cute select {
+  border: 2px solid #FBCFE8 !important;
+  background-color: #FFF9FA !important;
+}
+
+.theme-vintage_cute input:focus,
+.theme-vintage_cute select:focus {
+  border-color: #FB7185 !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
 }
