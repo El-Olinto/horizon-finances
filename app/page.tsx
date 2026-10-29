@@ -437,6 +437,13 @@ export default function Home() {
     );
   }
 
+  const navTabs = [
+    { id: 'inicio', label: 'Início', emoji: theme === 'vintage_cute' ? '🌸' : '🏠' },
+    { id: 'transacoes', label: 'Transações', emoji: theme === 'vintage_cute' ? '✨' : '💳' },
+    { id: 'metas', label: 'Metas', emoji: theme === 'vintage_cute' ? '🎀' : '📦' },
+    { id: 'analises', label: 'Análises', emoji: theme === 'vintage_cute' ? '📊' : '📈' },
+  ];
+
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden flex flex-col select-none">
       <div
@@ -446,7 +453,7 @@ export default function Home() {
         onClick={() => setOpenDropdownGoalId(null)}
       >
         {/* ========================================================
-            BARRA LATERAL ESQUERDA (DESKTOP)
+            BARRA LATERAL ESQUERDA (DESKTOP md:flex)
         ======================================================== */}
         <aside className="hidden md:flex w-16 sm:w-20 h-full flex-shrink-0 flex-col items-center justify-between py-6 px-2 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] backdrop-blur-xl z-30 select-none">
           <div className="flex flex-col items-center gap-6 w-full">
@@ -463,11 +470,7 @@ export default function Home() {
                   : 'text-[var(--text-muted)] hover:bg-[var(--accent-light)] hover:text-[var(--text-main)]'
               }`}
             >
-              {theme === 'vintage_cute' ? (
-                <AppleEmoji emoji="🏠" size={20} />
-              ) : (
-                <AppleEmoji emoji="📊" size={20} />
-              )}
+              <AppleEmoji emoji={theme === 'vintage_cute' ? '🏠' : '📊'} size={20} />
             </button>
 
             <button
@@ -479,11 +482,7 @@ export default function Home() {
                   : 'text-[var(--text-muted)] hover:bg-[var(--accent-light)] hover:text-[var(--text-main)]'
               }`}
             >
-              {theme === 'vintage_cute' ? (
-                <AppleEmoji emoji="🎀" size={20} />
-              ) : (
-                <AppleEmoji emoji="👥" size={20} />
-              )}
+              <AppleEmoji emoji={theme === 'vintage_cute' ? '🎀' : '👥'} size={20} />
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full" />
             </button>
@@ -493,11 +492,7 @@ export default function Home() {
               title="Aceder a Transações"
               className="w-11 h-11 rounded-2xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] hover:text-[var(--text-main)] transition-all"
             >
-              {theme === 'vintage_cute' ? (
-                <AppleEmoji emoji="📖" size={20} />
-              ) : (
-                <AppleEmoji emoji="💳" size={20} />
-              )}
+              <AppleEmoji emoji={theme === 'vintage_cute' ? '📖' : '💳'} size={20} />
             </button>
           </div>
 
@@ -506,100 +501,131 @@ export default function Home() {
             title="Definições de Perfil"
             className="w-10 h-10 rounded-2xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] hover:text-[var(--text-main)] transition-all"
           >
-            {theme === 'vintage_cute' ? (
-              <AppleEmoji emoji="🌸" size={20} />
-            ) : (
-              <AppleEmoji emoji="⚙️" size={20} />
-            )}
+            <AppleEmoji emoji={theme === 'vintage_cute' ? '🌸' : '⚙️'} size={20} />
           </button>
         </aside>
 
         {/* ========================================================
-            CONTENTOR PRINCIPAL (CABEÇALHO + ÁREA SCROLLÁVEL)
+            CONTENTOR PRINCIPAL (CABEÇALHO LIQUID GLASS + PAINEL)
         ======================================================== */}
         <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-          {/* CABEÇALHO */}
-          <header className="flex-shrink-0 w-full px-3 sm:px-8 py-3 bg-[var(--bg-surface)]/90 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center justify-between gap-2 z-20">
-            <div className="flex items-center gap-2">
-              <Logo size={32} />
+          {/* CABEÇALHO SUPERIOR COMPACTO COM LIQUID GLASS */}
+          <header className="flex-shrink-0 w-full bg-[var(--bg-surface)]/85 backdrop-blur-2xl border-b border-[var(--border-subtle)] shadow-[0_8px_32px_0_rgba(0,0,0,0.18)] z-30 transition-all">
+            {/* Linha 1: Marca & Ações Principais */}
+            <div className="px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Logo size={32} />
+              </div>
+
+              {/* Pílula Central Exclusiva para Desktop */}
+              <nav
+                translate="no"
+                className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
+              >
+                {navTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    translate="no"
+                    onClick={() => handleNavClick(tab.id as any)}
+                    className={`notranslate flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      currentNavTab === tab.id && activeSidebarView === 'dashboard'
+                        ? 'bg-[var(--accent)] text-white shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                    }`}
+                  >
+                    <AppleEmoji emoji={tab.emoji} size={14} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              {/* Botões do Topo */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  onClick={() => setIsTxModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
+                >
+                  <AppleEmoji emoji={theme === 'vintage_cute' ? '✨' : '➕'} size={12} />
+                  <span className="hidden sm:inline">Novo Lançamento</span>
+                  <span className="sm:hidden">Novo</span>
+                </button>
+
+                <button
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="flex items-center gap-2 p-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-card)] hover:border-[var(--accent)] border border-[var(--border-subtle)] transition-all shadow-sm active:scale-95 group"
+                >
+                  <div className="w-7 h-7 rounded-full bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-xs overflow-hidden">
+                    {profile.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt={profile.username}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      profile.username?.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="text-left hidden lg:block">
+                    <p className="text-xs font-bold text-[var(--text-main)] leading-none">
+                      {profile.full_name || `@${profile.username}`}
+                    </p>
+                    <span className="text-[10px] text-[var(--text-muted)]">Definições</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleLogout}
+                  className="px-2.5 sm:px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
+                >
+                  Sair
+                </button>
+              </div>
             </div>
 
-            <nav
-              translate="no"
-              className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
-            >
-              {[
-                { id: 'inicio', label: 'Início', emoji: theme === 'vintage_cute' ? '🌸' : null },
-                { id: 'transacoes', label: 'Transações', emoji: theme === 'vintage_cute' ? '✨' : null },
-                { id: 'metas', label: 'Metas', emoji: theme === 'vintage_cute' ? '🎀' : null },
-                { id: 'analises', label: 'Análises', emoji: theme === 'vintage_cute' ? '📊' : null },
-              ].map((tab) => (
+            {/* Linha 2: Pílula de Navegação Integrada ao Topo Móvel (md:hidden) */}
+            <div className="md:hidden px-3 pb-2.5 pt-0.5 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
+              <div
+                translate="no"
+                className="notranslate w-full flex items-center justify-between p-1 rounded-2xl bg-[var(--bg-card)]/80 border border-[var(--border-subtle)] shadow-inner"
+              >
+                {navTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    translate="no"
+                    onClick={() => handleNavClick(tab.id as any)}
+                    className={`notranslate flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all ${
+                      currentNavTab === tab.id && activeSidebarView === 'dashboard'
+                        ? 'bg-[var(--accent)] text-white shadow-sm scale-[1.02]'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                    }`}
+                  >
+                    <AppleEmoji emoji={tab.emoji} size={13} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+
                 <button
-                  key={tab.id}
                   translate="no"
-                  onClick={() => handleNavClick(tab.id as any)}
-                  className={`notranslate flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    currentNavTab === tab.id && activeSidebarView === 'dashboard'
-                      ? 'bg-[var(--accent)] text-white shadow-sm'
+                  onClick={() => setActiveSidebarView('coming_soon')}
+                  className={`notranslate flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all relative ${
+                    activeSidebarView === 'coming_soon'
+                      ? 'bg-[var(--accent)] text-white shadow-sm scale-[1.02]'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
                   }`}
                 >
-                  {tab.emoji && <AppleEmoji emoji={tab.emoji} size={14} />}
-                  <span>{tab.label}</span>
+                  <AppleEmoji emoji="👥" size={13} />
+                  <span className="hidden xs:inline">Metas+</span>
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />
                 </button>
-              ))}
-            </nav>
-
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => setIsTxModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
-              >
-                {theme === 'vintage_cute' ? (
-                  <AppleEmoji emoji="✨" size={13} />
-                ) : (
-                  <AppleEmoji emoji="➕" size={11} />
-                )}
-                <span className="hidden sm:inline">Novo Lançamento</span>
-                <span className="sm:hidden">Novo</span>
-              </button>
-
-              <button
-                onClick={() => setIsProfileModalOpen(true)}
-                className="flex items-center gap-2 p-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-card)] hover:border-[var(--accent)] border border-[var(--border-subtle)] transition-all shadow-sm active:scale-95 group"
-              >
-                <div className="w-7 h-7 rounded-full bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-xs overflow-hidden">
-                  {profile.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt={profile.username}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    profile.username?.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div className="text-left hidden lg:block">
-                  <p className="text-xs font-bold text-[var(--text-main)] leading-none">
-                    {profile.full_name || `@${profile.username}`}
-                  </p>
-                  <span className="text-[10px] text-[var(--text-muted)]">Definições</span>
-                </div>
-              </button>
-
-              <button
-                onClick={handleLogout}
-                className="px-2.5 sm:px-3 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
-              >
-                Sair
-              </button>
+              </div>
             </div>
           </header>
 
-          {/* ÁREA COM DESLOCAMENTO INTERNO */}
+          {/* ÁREA INTERNA COM ROLAGEM INDEPENDENTE */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8 pb-24 md:pb-12"
+            className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8 pb-12"
           >
             <div className="max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
               {activeSidebarView === 'coming_soon' ? (
@@ -664,6 +690,7 @@ export default function Home() {
                     </div>
                   </div>
 
+                  {/* Cartões de Métricas */}
                   <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)] flex items-center gap-1">
@@ -1039,76 +1066,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      {/* BARRA INFERIOR MOBILE */}
-      <nav
-        translate="no"
-        className="notranslate md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-t border-[var(--border-subtle)] px-4 py-2 flex items-center justify-around shadow-[0_-4px_25px_rgba(0,0,0,0.15)]"
-      >
-        <button
-          onClick={() => {
-            setActiveSidebarView('dashboard');
-            handleNavClick('inicio');
-          }}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all ${
-            currentNavTab === 'inicio' && activeSidebarView === 'dashboard'
-              ? 'text-[var(--accent)] font-bold scale-105'
-              : 'text-[var(--text-muted)]'
-          }`}
-        >
-          <AppleEmoji emoji={theme === 'vintage_cute' ? '🌸' : '🏠'} size={18} />
-          <span className="text-[10px]">Início</span>
-        </button>
-
-        <button
-          onClick={() => handleNavClick('transacoes')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all ${
-            currentNavTab === 'transacoes'
-              ? 'text-[var(--accent)] font-bold scale-105'
-              : 'text-[var(--text-muted)]'
-          }`}
-        >
-          <AppleEmoji emoji={theme === 'vintage_cute' ? '✨' : '💳'} size={18} />
-          <span className="text-[10px]">Extrato</span>
-        </button>
-
-        <button
-          onClick={() => handleNavClick('metas')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all ${
-            currentNavTab === 'metas'
-              ? 'text-[var(--accent)] font-bold scale-105'
-              : 'text-[var(--text-muted)]'
-          }`}
-        >
-          <AppleEmoji emoji={theme === 'vintage_cute' ? '🎀' : '📦'} size={18} />
-          <span className="text-[10px]">Metas</span>
-        </button>
-
-        <button
-          onClick={() => handleNavClick('analises')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all ${
-            currentNavTab === 'analises'
-              ? 'text-[var(--accent)] font-bold scale-105'
-              : 'text-[var(--text-muted)]'
-          }`}
-        >
-          <AppleEmoji emoji="📊" size={18} />
-          <span className="text-[10px]">Análise</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSidebarView('coming_soon')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all relative ${
-            activeSidebarView === 'coming_soon'
-              ? 'text-[var(--accent)] font-bold scale-105'
-              : 'text-[var(--text-muted)]'
-          }`}
-        >
-          <AppleEmoji emoji="👥" size={18} />
-          <span className="text-[10px]">Partilha</span>
-          <span className="absolute top-1 right-2 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
-        </button>
-      </nav>
 
       {/* JANELAS MODAIS */}
       <ProfileModal
