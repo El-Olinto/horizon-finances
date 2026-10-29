@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
 import ThemeSelector from './components/ThemeSelector';
 import NewTransactionModal from './components/NewTransactionModal';
+import NewGoalModal from './components/NewGoalModal';
 
 interface Transaction {
   id: string;
@@ -13,6 +14,15 @@ interface Transaction {
   type: 'income' | 'expense';
   category: string;
   date: string;
+}
+
+interface Goal {
+  id: string;
+  title: string;
+  target_amount: number;
+  current_amount: number;
+  deadline?: string;
+  category: string;
 }
 
 export default function Home() {
@@ -25,7 +35,12 @@ export default function Home() {
   // Transações
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+
+  // Metas
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loadingGoals, setLoadingGoals] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
 
   // Cadastro de Username para 1º Login Google
   const [newUsername, setNewUsername] = useState('');
@@ -52,6 +67,30 @@ export default function Home() {
     setLoadingTx(false);
   };
 
+  const fetchGoals = async (userId: string) => {
+    setLoadingGoals(true);
+    const { data } = await supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (data) setGoals(data);
+    setLoadingGoals(false);
+  };
+
+  const handleAddAmountToGoal = async (goalId: string, currentAmount: number, addition: number) => {
+    const updated = Number(currentAmount) + addition;
+    const { error } = await supabase
+      .from('goals')
+      .update({ current_amount: updated })
+      .eq('id', goalId);
+
+    if (!error && session?.user) {
+      await fetchGoals(session.user.id);
+    }
+  };
+
   const refreshUser = async () => {
     setLoading(true);
     setCheckingProfile(true);
@@ -66,14 +105,12 @@ export default function Home() {
         return;
       }
 
-      // 1. Tenta buscar pelo ID
-      let { data, error } = await supabase
+      let { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', freshSession.user.id)
         .maybeSingle();
 
-      // 2. Se não achou por ID mas tem email, busca pelo email
       if (!data && freshSession.user.email) {
         const { data: dataByEmail } = await supabase
           .from('profiles')
@@ -95,7 +132,10 @@ export default function Home() {
       if (data && data.username) {
         setProfile(data);
         applyTheme(data.theme_preference || 'day');
-        await fetchTransactions(freshSession.user.id);
+        await Promise.all([
+          fetchTransactions(freshSession.user.id),
+          fetchGoals(freshSession.user.id),
+        ]);
       } else {
         setProfile(null);
         applyTheme('day');
@@ -112,13 +152,14 @@ export default function Home() {
   useEffect(() => {
     refreshUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         await refreshUser();
       } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setProfile(null);
         setTransactions([]);
+        setGoals([]);
         applyTheme('day');
         setCheckingProfile(false);
         setLoading(false);
@@ -148,9 +189,7 @@ export default function Home() {
         .eq('username', cleanUsername)
         .maybeSingle();
 
-      if (existing) {
-        throw new Error('Este @username já está em uso.');
-      }
+      if (existing) throw new Error('Este @username já está em uso.');
 
       const { data, error } = await supabase
         .from('profiles')
@@ -183,6 +222,7 @@ export default function Home() {
     setSession(null);
     setProfile(null);
     setTransactions([]);
+    setGoals([]);
     applyTheme('day');
     setLoading(false);
   };
@@ -198,7 +238,6 @@ export default function Home() {
 
   const currentBalance = totalIncome - totalExpense;
 
-  // Enquanto estiver carregando ou verificando o perfil no banco, mantém o loading limpo
   if (loading || checkingProfile) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -210,7 +249,6 @@ export default function Home() {
     );
   }
 
-  // 1. Tela de Login / Cadastro (Sem sessão)
   if (!session) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
@@ -219,11 +257,10 @@ export default function Home() {
     );
   }
 
-  // 2. Apenas se confirmou que está logado mas NÃO existe perfil na tabela
   if (!profile || !profile.username) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md p-8 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5 animate-fade-in">
+        <div className="w-full max-w-md p-8 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5">
           <div className="text-center">
             <h2 className="text-xl font-black text-[var(--accent)]">Primeiro acesso com Google!</h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -272,9 +309,8 @@ export default function Home() {
     );
   }
 
-  // 3. Painel Principal (Dashboard Direto)
   return (
-    <main className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+    <main className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       {/* Topbar */}
       <header className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm">
         <div className="flex items-center gap-3">
@@ -302,7 +338,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Cards de Métricas */}
+      {/* Cards de Balanço */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo Atual</span>
@@ -326,7 +362,78 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Ações e Histórico */}
+      {/* Metas Financeiras (Goals) */}
+      <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-[var(--text-main)]">Metas & Objetivos</h2>
+            <p className="text-xs text-[var(--text-muted)]">Acompanhe a evolução das suas economias</p>
+          </div>
+          <button
+            onClick={() => setIsGoalModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
+          >
+            <span>+</span> Nova Meta
+          </button>
+        </div>
+
+        {loadingGoals ? (
+          <div className="py-6 text-center text-xs text-[var(--text-muted)]">Carregando metas...</div>
+        ) : goals.length === 0 ? (
+          <div className="py-8 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
+            <p className="text-xs font-medium text-[var(--text-muted)]">Você ainda não tem metas cadastradas.</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-1">Crie um objetivo para acompanhar suas economias.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {goals.map((g) => {
+              const current = Number(g.current_amount || 0);
+              const target = Number(g.target_amount || 1);
+              const progress = Math.min(Math.round((current / target) * 100), 100);
+
+              return (
+                <div
+                  key={g.id}
+                  className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-[var(--text-main)]">{g.title}</h4>
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        {g.category} {g.deadline ? `• até ${g.deadline}` : ''}
+                      </span>
+                    </div>
+                    <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
+                  </div>
+
+                  {/* Barra de Progresso */}
+                  <div className="w-full h-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      R$ {current.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de R${' '}
+                      {target.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                    <button
+                      onClick={() => handleAddAmountToGoal(g.id, current, 50)}
+                      className="px-2.5 py-1 rounded-lg bg-[var(--accent-light)] text-[var(--accent)] text-[10px] font-bold hover:opacity-80 transition-opacity"
+                    >
+                      + R$ 50
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Histórico e Ação de Transações */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -334,7 +441,7 @@ export default function Home() {
             <p className="text-xs text-[var(--text-muted)]">Histórico financeiro em tempo real</p>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => setIsTxModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
           >
             <span>+</span> Nova Movimentação
@@ -386,12 +493,19 @@ export default function Home() {
         )}
       </section>
 
-      {/* Modal */}
+      {/* Modais */}
       <NewTransactionModal
         userId={session.user.id}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isTxModalOpen}
+        onClose={() => setIsTxModalOpen(false)}
         onSuccess={() => fetchTransactions(session.user.id)}
+      />
+
+      <NewGoalModal
+        userId={session.user.id}
+        isOpen={isGoalModalOpen}
+        onClose={() => setIsGoalModalOpen(false)}
+        onSuccess={() => fetchGoals(session.user.id)}
       />
     </main>
   );
