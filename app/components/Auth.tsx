@@ -12,17 +12,20 @@ interface AuthProps {
 
 export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>(initialMode);
   
-  // Campo unificado: pode ser o e-mail ou o @username
+  // Login: E-mail ou @username
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [password, setPassword] = useState('');
   
-  // Campos de cadastro
+  // Cadastro
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   
+  // Esqueci a senha
+  const [resetEmail, setResetEmail] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -35,7 +38,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
     }
   }, []);
 
-  const openAuth = (selectedMode: 'signin' | 'signup') => {
+  const openAuth = (selectedMode: 'signin' | 'signup' | 'forgot') => {
     setMode(selectedMode);
     setErrorMessage('');
     setSuccessMessage('');
@@ -56,6 +59,28 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao conectar com Google');
       setGoogleLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const cleanEmail = resetEmail.trim().toLowerCase();
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
+      });
+
+      if (error) throw error;
+
+      setSuccessMessage('Enviamos um link de recuperação para o seu e-mail! Verifique sua caixa de entrada.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao solicitar redefinição de senha.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,6 +115,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
               full_name: fullName.trim() || cleanUsername,
               username: cleanUsername,
             },
+            emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
           },
         });
 
@@ -107,14 +133,18 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
           ]);
         }
 
-        setSuccessMessage('Conta criada com sucesso! Conectando...');
-        setTimeout(() => onSuccess(), 900);
-      } else {
+        // Se o Supabase exigir confirmação de e-mail, a session vem nula inicialmente
+        if (signUpData.session) {
+          setSuccessMessage('Conta criada com sucesso! Conectando...');
+          setTimeout(() => onSuccess(), 900);
+        } else {
+          setSuccessMessage('Conta cadastrada! Enviamos um link de confirmação para o seu e-mail. Confirme-o para poder fazer login.');
+        }
+      } else if (mode === 'signin') {
         // Fluxo de Login: E-mail ou Nome de Usuário
         const cleanIdentifier = loginIdentifier.trim().toLowerCase().replace(/^@/, '');
         let targetEmail = cleanIdentifier;
 
-        // Se o usuário digitou username (sem arroba de email), busca o email dele na tabela profiles
         if (!cleanIdentifier.includes('@') || !cleanIdentifier.includes('.')) {
           const { data: userProfile, error: profileErr } = await supabase
             .from('profiles')
@@ -135,8 +165,11 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
         });
 
         if (error) {
+          if (error.message.includes('Email not confirmed')) {
+            throw new Error('Por favor, confirme seu e-mail antes de entrar.');
+          }
           if (error.message.includes('Invalid login credentials')) {
-            throw new Error('Identificador ou senha incorretos.');
+            throw new Error('E-mail, usuário ou senha incorretos.');
           }
           throw error;
         }
@@ -185,6 +218,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
             className="px-4 py-2 rounded-full text-xs font-bold text-slate-950 bg-gradient-to-r from-sky-400 to-cyan-300 hover:brightness-110 transition-all shadow-[0_0_15px_rgba(56,189,248,0.4)] active:scale-95 flex items-center gap-1.5"
           >
             <span>Criar Conta</span>
+            <AppleEmoji emoji="✨" size={13} />
           </button>
         </div>
       </header>
@@ -334,7 +368,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
         </footer>
       </main>
 
-      {/* Modal de Login / Cadastro */}
+      {/* Modal de Autenticação */}
       {isModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in transition-colors duration-300"
@@ -357,82 +391,80 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                 <Logo size={42} />
               </div>
               <h2 className="text-xl font-black text-white">
-                {mode === 'signin' ? 'Acesse sua conta' : 'Crie sua conta'}
+                {mode === 'signin' && 'Acesse sua conta'}
+                {mode === 'signup' && 'Crie sua conta'}
+                {mode === 'forgot' && 'Recuperar senha'}
               </h2>
               <p className="text-xs text-slate-400">
-                {mode === 'signin'
-                  ? 'Use seu e-mail ou seu @username'
-                  : 'Comece a organizar suas finanças hoje mesmo.'}
+                {mode === 'signin' && 'Use seu e-mail ou seu @username'}
+                {mode === 'signup' && 'Comece a organizar suas finanças hoje'}
+                {mode === 'forgot' && 'Informe seu e-mail para redefinir'}
               </p>
             </div>
 
-            {/* Alternador Entrar / Cadastrar */}
-            <div className="flex items-center p-1 rounded-full bg-slate-950 border border-sky-500/20">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signin');
-                  setErrorMessage('');
-                }}
-                className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  mode === 'signin'
-                    ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Entrar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('signup');
-                  setErrorMessage('');
-                }}
-                className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  mode === 'signup'
-                    ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Cadastrar
-              </button>
-            </div>
+            {/* Alternador Entrar / Cadastrar (apenas visível se não estiver no modo forgot) */}
+            {mode !== 'forgot' && (
+              <div className="flex items-center p-1 rounded-full bg-slate-950 border border-sky-500/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMessage('');
+                    setSuccessMessage('');
+                  }}
+                  className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    mode === 'signin'
+                      ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Entrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup');
+                    setErrorMessage('');
+                    setSuccessMessage('');
+                  }}
+                  className={`flex-1 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    mode === 'signup'
+                      ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Cadastrar
+                </button>
+              </div>
+            )}
 
-            {/* Botão Google */}
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={googleLoading}
-              className="w-full py-2.5 px-4 rounded-full border border-sky-500/30 bg-slate-950/80 hover:bg-sky-500/10 text-xs font-bold text-white transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.92 0 12s.45 3.85 1.24 5.42l4.04-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>{googleLoading ? 'Conectando...' : 'Entrar com Google'}</span>
-            </button>
+            {/* Botão Google (só no modo signin / signup) */}
+            {mode !== 'forgot' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={googleLoading}
+                  className="w-full py-2.5 px-4 rounded-full border border-sky-500/30 bg-slate-950/80 hover:bg-sky-500/10 text-xs font-bold text-white transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.24v3.15C3.26 21.36 7.33 24 12 24z" />
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.24C.45 8.15 0 9.92 0 12s.45 3.85 1.24 5.42l4.04-3.15z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.58l4.04 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                  </svg>
+                  <span>{googleLoading ? 'Conectando...' : 'Entrar com Google'}</span>
+                </button>
 
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-px bg-sky-500/20" />
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                ou com credenciais
-              </span>
-              <div className="flex-1 h-px bg-sky-500/20" />
-            </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-sky-500/20" />
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    ou com credenciais
+                  </span>
+                  <div className="flex-1 h-px bg-sky-500/20" />
+                </div>
+              </>
+            )}
 
             {errorMessage && (
               <p className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
@@ -441,95 +473,152 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
             )}
 
             {successMessage && (
-              <p className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium text-center">
+              <p className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium text-center leading-relaxed">
                 {successMessage}
               </p>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-3">
-              {mode === 'signup' ? (
-                <>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                      Nome Completo
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: Guilherme Silva"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                      Nome de Usuário (@)
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="ex: guilherme"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                      E-mail
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="seu@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
-                    />
-                  </div>
-                </>
-              ) : (
-                /* Campo Híbrido: E-mail OU @username */
+            {/* FORMULÁRIO: ESQUECI A SENHA */}
+            {mode === 'forgot' ? (
+              <form onSubmit={handleForgotPassword} className="space-y-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                    E-mail ou @usuário
+                    Seu e-mail cadastrado
                   </label>
                   <input
-                    type="text"
+                    type="email"
                     required
-                    placeholder="seu@email.com ou @usuario"
-                    value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder="seu@email.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
                     className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
                   />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                  Senha
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
-                />
-              </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(56,189,248,0.3)] active:scale-95 disabled:opacity-50 mt-2"
+                >
+                  {loading ? 'Enviando...' : 'Enviar Link de Redefinição'}
+                </button>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(56,189,248,0.3)] active:scale-95 disabled:opacity-50 mt-2"
-              >
-                {loading ? 'Conectando à rede...' : mode === 'signin' ? 'Acessar Painel' : 'Iniciar Minha Jornada'}
-              </button>
-            </form>
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signin');
+                      setErrorMessage('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-xs text-slate-400 hover:text-white transition-colors"
+                  >
+                    ← Voltar ao login
+                  </button>
+                </div>
+              </form>
+            ) : (
+              /* FORMULÁRIO: SIGNIN / SIGNUP */
+              <form onSubmit={handleSubmit} className="space-y-3">
+                {mode === 'signup' ? (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Nome Completo
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Guilherme Silva"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Nome de Usuário (@)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="ex: guilherme"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        E-mail Real (será confirmado)
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="seu@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      E-mail ou @usuário
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="seu@email.com ou @usuario"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-300">
+                      Senha
+                    </label>
+                    {mode === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('forgot');
+                          setResetEmail(loginIdentifier.includes('@') ? loginIdentifier : '');
+                          setErrorMessage('');
+                          setSuccessMessage('');
+                        }}
+                        className="text-[10px] text-sky-400 hover:underline font-medium"
+                      >
+                        Esqueceu a senha?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-2 rounded-full bg-slate-950 border border-sky-500/30 text-xs text-white focus:outline-none focus:border-sky-400 select-text placeholder-slate-600"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-full bg-gradient-to-r from-sky-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(56,189,248,0.3)] active:scale-95 disabled:opacity-50 mt-2"
+                >
+                  {loading ? 'Conectando...' : mode === 'signin' ? 'Acessar Painel' : 'Criar Minha Conta'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

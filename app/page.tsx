@@ -13,6 +13,7 @@ import ManageGoalMoneyModal from './components/ManageGoalMoneyModal';
 import CategoryChart from './components/CategoryChart';
 import ConfirmModal from './components/ConfirmModal';
 import AppleEmoji from './components/AppleEmoji';
+import ResetPasswordModal from './components/ResetPasswordModal';
 
 interface Transaction {
   id: string;
@@ -48,6 +49,7 @@ export default function Home() {
   const analisesSectionRef = useRef<HTMLElement>(null);
 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
@@ -86,6 +88,7 @@ export default function Home() {
 
   const isAnyModalOpen =
     isProfileModalOpen ||
+    isResetPasswordOpen ||
     isTxModalOpen ||
     Boolean(editingTransaction) ||
     isGoalModalOpen ||
@@ -227,7 +230,16 @@ export default function Home() {
   useEffect(() => {
     refreshUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      // Quando o usuário chega pelo link do email de recuperação de senha
+      if (event === 'PASSWORD_RECOVERY') {
+        setSession(currentSession);
+        setIsResetPasswordOpen(true);
+        setLoading(false);
+        setCheckingProfile(false);
+        return;
+      }
+
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         await refreshUser();
       } else if (event === 'SIGNED_OUT') {
@@ -271,14 +283,12 @@ export default function Home() {
 
       if (existing) throw new Error('Este @username já está registrado por outra pessoa.');
 
-      // 1. Cadastra a senha na conta de autenticação do Supabase
       const { error: passwordError } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (passwordError) throw passwordError;
 
-      // 2. Salva o perfil com o username
       const { data, error } = await supabase
         .from('profiles')
         .upsert([
@@ -1067,6 +1077,12 @@ export default function Home() {
         onThemeChange={applyTheme}
         onProfileUpdated={refreshUser}
         onAccountDeleted={handleLogout}
+      />
+
+      <ResetPasswordModal
+        isOpen={isResetPasswordOpen}
+        onSuccess={() => setIsResetPasswordOpen(false)}
+        onClose={() => setIsResetPasswordOpen(false)}
       />
 
       <NewTransactionModal
