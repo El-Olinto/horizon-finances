@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Horizon Finances',
-  description: 'Controlo financeiro pessoal moderno e intuitivo',
+  title: 'Horizon - Gestão Financeira',
+  description: 'Controle de finanças, metas e caixinhas',
+  icons: {
+    icon: '/favicon.svg?v=2',
+  },
 };
 
 export default function RootLayout({

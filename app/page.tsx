@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
-import ThemeSelector from './components/ThemeSelector';
+import Logo from './components/Logo';
+import ProfileModal from './components/ProfileModal';
 import NewTransactionModal from './components/NewTransactionModal';
 import EditTransactionModal from './components/EditTransactionModal';
 import NewGoalModal from './components/NewGoalModal';
@@ -37,6 +38,9 @@ export default function Home() {
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [theme, setTheme] = useState('day');
 
+  // Modal Perfil & Configurações
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
   // Transações
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
@@ -53,7 +57,7 @@ export default function Home() {
   const [loadingGoals, setLoadingGoals] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
 
-  // Controle de menu de 3 pontinhos e modais das caixinhas
+  // Controlo de menu de opções (3 pontinhos) e modais das caixinhas
   const [openDropdownGoalId, setOpenDropdownGoalId] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [managingGoal, setManagingGoal] = useState<Goal | null>(null);
@@ -71,17 +75,24 @@ export default function Home() {
     action: async () => {},
   });
 
-  // Cadastro de Username para 1º Login Google
+  // Registo de Username para 1º Login Google
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
 
-  const applyTheme = (themeName: string) => {
+  const applyTheme = async (themeName: string) => {
     if (typeof document !== 'undefined') {
       document.body.classList.remove('theme-day', 'theme-interestelar', 'theme-vintage_cute');
       document.body.classList.add(`theme-${themeName}`);
     }
     setTheme(themeName);
+
+    if (session?.user) {
+      await supabase
+        .from('profiles')
+        .update({ theme_preference: themeName })
+        .eq('id', session.user.id);
+    }
   };
 
   const fetchTransactions = async (userId: string) => {
@@ -111,8 +122,8 @@ export default function Home() {
   const promptDeleteTransaction = (tx: Transaction) => {
     setConfirmDeleteConfig({
       isOpen: true,
-      title: 'Excluir Movimentação 🗑️',
-      message: `Tem certeza que deseja apagar a transação "${tx.title}" no valor de R$ ${Number(tx.amount).toFixed(2)}? Essa ação não pode ser desfeita.`,
+      title: 'Eliminar Movimentação 🗑️',
+      message: `Tem a certeza de que pretende apagar a transação "${tx.title}" no valor de R$ ${Number(tx.amount).toFixed(2)}? Esta ação não pode ser desfeita.`,
       action: async () => {
         const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
         if (!error && session?.user) {
@@ -126,8 +137,8 @@ export default function Home() {
     setOpenDropdownGoalId(null);
     setConfirmDeleteConfig({
       isOpen: true,
-      title: 'Excluir Caixinha 📦',
-      message: `Deseja realmente remover a caixinha "${goal.title}"? O saldo guardado nela (R$ ${Number(goal.current_amount || 0).toFixed(2)}) não será devolvido automaticamente à conta se você não fizer o resgate primeiro.`,
+      title: 'Eliminar Caixinha 📦',
+      message: `Pretende realmente remover a caixinha "${goal.title}"? O saldo guardado nela (R$ ${Number(goal.current_amount || 0).toFixed(2)}) não será devolvido à conta a menos que faça o resgate previamente.`,
       action: async () => {
         const { error } = await supabase.from('goals').delete().eq('id', goal.id);
         if (!error && session?.user) {
@@ -192,7 +203,7 @@ export default function Home() {
         applyTheme('day');
       }
     } catch (e) {
-      console.error('Erro ao sincronizar usuário:', e);
+      console.error('Erro ao sincronizar utilizador:', e);
       setProfile(null);
     } finally {
       setCheckingProfile(false);
@@ -226,7 +237,7 @@ export default function Home() {
 
     const cleanUsername = newUsername.trim().toLowerCase();
     if (cleanUsername.length < 3) {
-      setUsernameError('O nome de usuário precisa ter pelo menos 3 letras.');
+      setUsernameError('O nome de utilizador precisa de ter pelo menos 3 carateres.');
       return;
     }
 
@@ -240,7 +251,7 @@ export default function Home() {
         .eq('username', cleanUsername)
         .maybeSingle();
 
-      if (existing) throw new Error('Este @username já está em uso.');
+      if (existing) throw new Error('Este @username já se encontra em uso.');
 
       const { data, error } = await supabase
         .from('profiles')
@@ -261,7 +272,7 @@ export default function Home() {
       setProfile(data);
       applyTheme('day');
     } catch (err: any) {
-      setUsernameError(err.message || 'Erro ao registrar perfil');
+      setUsernameError(err.message || 'Erro ao registar perfil');
     } finally {
       setSavingUsername(false);
     }
@@ -278,6 +289,7 @@ export default function Home() {
     setLoading(false);
   };
 
+  // Cálculos financeiros consolidados
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount), 0);
@@ -289,6 +301,7 @@ export default function Home() {
   const currentBalance = totalIncome - totalExpense;
   const totalInGoals = goals.reduce((acc, g) => acc + Number(g.current_amount || 0), 0);
 
+  // Transações com filtros e pesquisa
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       const matchesType = filterType === 'all' || tx.type === filterType;
@@ -298,12 +311,12 @@ export default function Home() {
     });
   }, [transactions, filterType, filterCategory, searchTerm]);
 
-  // Exportação para arquivo CSV
+  // Exportar dados filtrados ou completos em CSV
   const handleExportCSV = () => {
     const listToExport = filteredTransactions.length > 0 ? filteredTransactions : transactions;
 
     if (listToExport.length === 0) {
-      alert('Não há movimentações para exportar.');
+      alert('Não existem movimentações para exportar.');
       return;
     }
 
@@ -334,7 +347,7 @@ export default function Home() {
       <main className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent)]"></div>
-          <span className="text-xs text-[var(--text-muted)] font-medium">Carregando Horizon Finances...</span>
+          <span className="text-xs text-[var(--text-muted)] font-medium">A carregar Horizon Finances...</span>
         </div>
       </main>
     );
@@ -355,7 +368,7 @@ export default function Home() {
           <div className="text-center">
             <h2 className="text-xl font-black text-[var(--accent)]">Primeiro acesso com Google!</h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              Para concluir seu cadastro, escolha seu @username exclusivo:
+              Para concluir o seu registo, escolha o seu @username exclusivo:
             </p>
           </div>
 
@@ -367,7 +380,7 @@ export default function Home() {
 
           <form onSubmit={handleCreateProfile} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Seu @username</label>
+              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">O seu @username</label>
               <input
                 type="text"
                 required
@@ -382,7 +395,7 @@ export default function Home() {
               disabled={savingUsername}
               className="w-full py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold text-xs transition-all shadow-md disabled:opacity-50"
             >
-              {savingUsername ? 'Salvando...' : 'Confirmar e Entrar'}
+              {savingUsername ? 'A guardar...' : 'Confirmar e Entrar'}
             </button>
           </form>
 
@@ -392,7 +405,7 @@ export default function Home() {
               onClick={handleLogout}
               className="text-xs text-[var(--text-muted)] hover:text-rose-500 transition-colors font-medium"
             >
-              Cancelar e voltar para o login
+              Cancelar e regressar ao ecrã de início de sessão
             </button>
           </div>
         </div>
@@ -405,34 +418,44 @@ export default function Home() {
       className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-fade-in"
       onClick={() => setOpenDropdownGoalId(null)}
     >
-      {/* Topbar */}
+      {/* Topbar com Logo e Menu de Perfil */}
       <header className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-sm shadow-inner">
-            {profile.username?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <h1 className="text-sm font-black tracking-tight leading-none text-[var(--text-main)]">Horizon Finances</h1>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 font-medium">@{profile.username}</p>
-          </div>
-        </div>
+        <Logo size={36} />
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <ThemeSelector
-            currentTheme={theme}
-            userId={session.user.id}
-            onThemeChange={applyTheme}
-          />
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-[var(--bg-card)] hover:border-[var(--accent)] border border-[var(--border-subtle)] transition-all shadow-sm active:scale-95 group"
+          >
+            <div className="w-7 h-7 rounded-xl bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-xs overflow-hidden">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.username}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                profile.username?.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="text-left hidden sm:block">
+              <p className="text-xs font-bold text-[var(--text-main)] leading-none">
+                {profile.full_name || `@${profile.username}`}
+              </p>
+              <span className="text-[10px] text-[var(--text-muted)]">Configurações</span>
+            </div>
+          </button>
+
           <button
             onClick={handleLogout}
-            className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
+            className="px-3 py-2 rounded-2xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
           >
             Sair
           </button>
         </div>
       </header>
 
-      {/* Cards de Métricas Principais (4 Colunas) */}
+      {/* Cartões de Métricas Principais (4 Colunas) */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo em Conta</span>
@@ -463,7 +486,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Gráfico de Distribuição */}
+      {/* Gráfico de Distribuição por Categorias */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4">
         <div>
           <h2 className="text-base font-bold text-[var(--text-main)]">Distribuição de Despesas</h2>
@@ -477,7 +500,7 @@ export default function Home() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[var(--text-main)]">Caixinhas & Objetivos 📦</h2>
-            <p className="text-xs text-[var(--text-muted)]">O dinheiro guardado sai do saldo e volta quando você resgatar</p>
+            <p className="text-xs text-[var(--text-muted)]">O dinheiro guardado sai do saldo e volta quando for resgatado</p>
           </div>
           <button
             onClick={() => setIsGoalModalOpen(true)}
@@ -488,11 +511,11 @@ export default function Home() {
         </div>
 
         {loadingGoals ? (
-          <div className="py-6 text-center text-xs text-[var(--text-muted)]">Carregando caixinhas...</div>
+          <div className="py-6 text-center text-xs text-[var(--text-muted)]">A carregar caixinhas...</div>
         ) : goals.length === 0 ? (
           <div className="py-8 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
-            <p className="text-xs font-medium text-[var(--text-muted)]">Você ainda não tem caixinhas criadas.</p>
-            <p className="text-[11px] text-[var(--text-muted)] mt-1">Crie sua primeira caixinha para reservar parte do seu saldo.</p>
+            <p className="text-xs font-medium text-[var(--text-muted)]">Ainda não tem caixinhas criadas.</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-1">Crie a sua primeira caixinha para reservar parte do seu saldo.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -518,6 +541,7 @@ export default function Home() {
                     <div className="flex items-center gap-2 relative">
                       <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
 
+                      {/* Botão Opções (3 pontinhos) */}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -550,7 +574,7 @@ export default function Home() {
                             onClick={() => promptDeleteGoal(g)}
                             className="w-full text-left px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors"
                           >
-                            <span>🗑️</span> Excluir
+                            <span>🗑️</span> Eliminar
                           </button>
                         </div>
                       )}
@@ -590,7 +614,7 @@ export default function Home() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[var(--text-main)]">Transações Recentes</h2>
-            <p className="text-xs text-[var(--text-muted)]">Filtre, edite e exporte suas movimentações</p>
+            <p className="text-xs text-[var(--text-muted)]">Filtre, edite e exporte as suas movimentações</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -613,7 +637,7 @@ export default function Home() {
           <div className="flex-1 min-w-[200px]">
             <input
               type="text"
-              placeholder="Buscar pelo título..."
+              placeholder="Pesquisar por título..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
@@ -658,7 +682,7 @@ export default function Home() {
             onChange={(e) => setFilterCategory(e.target.value)}
             className="px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
           >
-            <option value="all">Todas Categorias</option>
+            <option value="all">Todas as Categorias</option>
             <option value="Geral">Geral</option>
             <option value="Caixinhas">Caixinhas</option>
             <option value="Alimentação">Alimentação</option>
@@ -671,12 +695,12 @@ export default function Home() {
 
         {/* Lista de Transações */}
         {loadingTx ? (
-          <div className="py-8 text-center text-xs text-[var(--text-muted)]">Carregando movimentações...</div>
+          <div className="py-8 text-center text-xs text-[var(--text-muted)]">A carregar movimentações...</div>
         ) : filteredTransactions.length === 0 ? (
           <div className="py-10 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
             <p className="text-xs font-medium text-[var(--text-muted)]">
               {transactions.length === 0
-                ? 'Nenhuma transação registrada ainda.'
+                ? 'Nenhuma transação registada até ao momento.'
                 : 'Nenhuma movimentação corresponde aos filtros selecionados.'}
             </p>
             {transactions.length === 0 && (
@@ -726,7 +750,7 @@ export default function Home() {
 
                   <button
                     onClick={() => promptDeleteTransaction(tx)}
-                    title="Excluir movimentação"
+                    title="Eliminar movimentação"
                     className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors text-xs opacity-70 group-hover:opacity-100"
                   >
                     ✕
@@ -737,6 +761,18 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Modal: Meu Perfil + Configurações */}
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        profile={profile}
+        currentTheme={theme}
+        totalBalance={currentBalance}
+        totalGoals={totalInGoals}
+        onClose={() => setIsProfileModalOpen(false)}
+        onThemeChange={applyTheme}
+        onProfileUpdated={refreshUser}
+      />
 
       {/* Modal: Nova Transação */}
       <NewTransactionModal
@@ -791,12 +827,12 @@ export default function Home() {
         }}
       />
 
-      {/* Modal Customizado de Confirmação de Exclusão */}
+      {/* Modal Customizado de Confirmação de Eliminação */}
       <ConfirmModal
         isOpen={confirmDeleteConfig.isOpen}
         title={confirmDeleteConfig.title}
         message={confirmDeleteConfig.message}
-        confirmText="Sim, excluir"
+        confirmText="Sim, eliminar"
         cancelText="Voltar"
         isDestructive={true}
         onConfirm={handleExecuteConfirm}

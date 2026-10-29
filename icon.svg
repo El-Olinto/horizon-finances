@@ -1,0 +1,14 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fundo Sólido e Elegante -->
+  <rect width="48" height="48" rx="13" fill="#0B132B" />
+
+  <!-- Arco Externo 1 (Horizonte expandido) -->
+  <path d="M8 29C8 17.4 17.4 8 29 8V14C20.7 14 14 20.7 14 29H8Z" fill="#38BDF8" />
+
+  <!-- Arco Médio 2 -->
+  <path d="M17 29C17 22.4 22.4 17 29 17C35.6 17 41 22.4 41 29H35C35 25.7 32.3 23 29 23C25.7 23 23 25.7 23 29H17Z" fill="#F8FAFC" />
+
+  <!-- Núcleo Circular Central com caimento inferior -->
+  <path d="M23 29C23 25.7 25.7 23 29 23C32.3 23 35 25.7 35 29C35 32.3 32.3 35 29 35V41C35.6 41 41 35.6 41 29H35C35 32.3 32.3 35 29 35C25.7 35 23 32.3 23 29Z" fill="#0284C7" />
+  <circle cx="29" cy="29" r="3.5" fill="#38BDF8" />
+</svg>
