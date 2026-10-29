@@ -78,7 +78,9 @@ export default function Home() {
     action: async () => {},
   });
 
+  // Primeiro Acesso (Google OAuth) - Username e Senha
   const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
 
@@ -246,9 +248,14 @@ export default function Home() {
     e.preventDefault();
     if (!session?.user) return;
 
-    const cleanUsername = newUsername.trim().toLowerCase();
+    const cleanUsername = newUsername.trim().toLowerCase().replace(/^@/, '');
     if (cleanUsername.length < 3) {
-      setUsernameError('O nome de utilizador tem de ter pelo menos 3 carateres.');
+      setUsernameError('O nome de usuário precisa ter pelo menos 3 caracteres.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setUsernameError('A senha precisa ter no mínimo 6 caracteres.');
       return;
     }
 
@@ -262,8 +269,16 @@ export default function Home() {
         .eq('username', cleanUsername)
         .maybeSingle();
 
-      if (existing) throw new Error('Este @username já se encontra registado.');
+      if (existing) throw new Error('Este @username já está registrado por outra pessoa.');
 
+      // 1. Cadastra a senha na conta de autenticação do Supabase
+      const { error: passwordError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (passwordError) throw passwordError;
+
+      // 2. Salva o perfil com o username
       const { data, error } = await supabase
         .from('profiles')
         .upsert([
@@ -283,7 +298,7 @@ export default function Home() {
       setProfile(data);
       applyTheme('day');
     } catch (err: any) {
-      setUsernameError(err.message || 'Erro ao registar perfil');
+      setUsernameError(err.message || 'Erro ao registrar perfil');
     } finally {
       setSavingUsername(false);
     }
@@ -382,6 +397,7 @@ export default function Home() {
     return <Auth onSuccess={refreshUser} />;
   }
 
+  // Primeiro Acesso via Google: solicita Username E Senha
   if (!profile || !profile.username) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
@@ -391,8 +407,8 @@ export default function Home() {
               <span>Primeiro acesso com a Google!</span>
               <AppleEmoji emoji="🎉" size={20} />
             </h2>
-            <p className="text-xs text-[var(--text-muted)] mt-1">
-              Para concluir a sua configuração, defina o seu @username exclusivo:
+            <p className="text-xs text-[var(--text-muted)] mt-1.5 leading-relaxed">
+              Defina seu @username e uma senha. Assim você poderá acessar sua conta usando seu Google ou diretamente seu nome de usuário.
             </p>
           </div>
 
@@ -404,7 +420,7 @@ export default function Home() {
 
           <form onSubmit={handleCreateProfile} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">O seu @username</label>
+              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Seu @username</label>
               <input
                 type="text"
                 required
@@ -414,12 +430,26 @@ export default function Home() {
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
               />
             </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Definir uma senha</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                placeholder="Mínimo 6 caracteres"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
+              />
+            </div>
+
             <button
               type="submit"
               disabled={savingUsername}
               className="w-full py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold text-xs transition-all shadow-md disabled:opacity-50"
             >
-              {savingUsername ? 'A guardar...' : 'Confirmar e Iniciar'}
+              {savingUsername ? 'Configurando conta...' : 'Concluir Cadastro'}
             </button>
           </form>
 
@@ -509,14 +539,13 @@ export default function Home() {
             CONTENTOR PRINCIPAL (CABEÇALHO LIQUID GLASS + PAINEL)
         ======================================================== */}
         <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-          {/* CABEÇALHO SUPERIOR COMPACTO COM LIQUID GLASS */}
           <header className="flex-shrink-0 w-full bg-[var(--bg-surface)]/85 backdrop-blur-2xl border-b border-[var(--border-subtle)] shadow-[0_8px_32px_0_rgba(0,0,0,0.18)] z-30 transition-all">
             <div className="px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Logo size={32} />
               </div>
 
-              {/* Pílula Central Exclusiva para Desktop (hidden md:flex) */}
+              {/* Pílula Central para Desktop */}
               <nav
                 translate="no"
                 className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
