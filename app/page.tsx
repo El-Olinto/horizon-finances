@@ -446,7 +446,7 @@ export default function Home() {
         onClick={() => setOpenDropdownGoalId(null)}
       >
         {/* ========================================================
-            BARRA LATERAL ESQUERDA (APENAS DESKTOP - md:flex)
+            BARRA LATERAL ESQUERDA (DESKTOP)
         ======================================================== */}
         <aside className="hidden md:flex w-16 sm:w-20 h-full flex-shrink-0 flex-col items-center justify-between py-6 px-2 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] backdrop-blur-xl z-30 select-none">
           <div className="flex flex-col items-center gap-6 w-full">
@@ -518,13 +518,12 @@ export default function Home() {
             CONTENTOR PRINCIPAL (CABEÇALHO + ÁREA SCROLLÁVEL)
         ======================================================== */}
         <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-          {/* CABEÇALHO COMPACTO RESPONSIVO */}
+          {/* CABEÇALHO */}
           <header className="flex-shrink-0 w-full px-3 sm:px-8 py-3 bg-[var(--bg-surface)]/90 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center justify-between gap-2 z-20">
             <div className="flex items-center gap-2">
               <Logo size={32} />
             </div>
 
-            {/* Navegação por Pílula visível apenas a partir de tablets (md:flex) */}
             <nav
               translate="no"
               className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
@@ -551,7 +550,6 @@ export default function Home() {
               ))}
             </nav>
 
-            {/* Ações Rápidas & Perfil */}
             <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={() => setIsTxModalOpen(true)}
@@ -598,7 +596,7 @@ export default function Home() {
             </div>
           </header>
 
-          {/* ÁREA INTERNA SCROLLÁVEL (COM ESPAÇAMENTO INFERIOR PARA A BARRA MOBILE) */}
+          {/* ÁREA COM DESLOCAMENTO INTERNO */}
           <div
             ref={scrollContainerRef}
             className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8 pb-24 md:pb-12"
@@ -666,7 +664,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Cartões de Métricas (2 colunas em mobile, 4 em desktop) */}
                   <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)] flex items-center gap-1">
@@ -911,7 +908,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Filtros Compactos */}
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
                       <div className="flex-1">
                         <input
@@ -974,7 +970,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Lista de Transações */}
                     {loadingTx ? (
                       <div className="py-8 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
                         <AppleEmoji emoji="⏳" size={16} />
@@ -1045,9 +1040,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ========================================================
-          BARRA DE NAVEGAÇÃO INFERIOR EXCLUSIVA PARA SMARTPHONES (md:hidden)
-      ======================================================== */}
+      {/* BARRA INFERIOR MOBILE */}
       <nav
         translate="no"
         className="notranslate md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border-t border-[var(--border-subtle)] px-4 py-2 flex items-center justify-around shadow-[0_-4px_25px_rgba(0,0,0,0.15)]"
@@ -1127,6 +1120,7 @@ export default function Home() {
         onClose={() => setIsProfileModalOpen(false)}
         onThemeChange={applyTheme}
         onProfileUpdated={refreshUser}
+        onAccountDeleted={handleLogout}
       />
 
       <NewTransactionModal

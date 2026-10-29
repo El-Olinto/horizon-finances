@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import AvatarCropModal from './AvatarCropModal';
+import AppleEmoji from './AppleEmoji';
 
 interface Profile {
   id: string;
@@ -22,6 +23,7 @@ interface ProfileModalProps {
   onClose: () => void;
   onThemeChange: (theme: string) => void;
   onProfileUpdated: () => void;
+  onAccountDeleted?: () => void;
 }
 
 export default function ProfileModal({
@@ -33,6 +35,7 @@ export default function ProfileModal({
   onClose,
   onThemeChange,
   onProfileUpdated,
+  onAccountDeleted,
 }: ProfileModalProps) {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -42,7 +45,13 @@ export default function ProfileModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados do Recorte
+  // Estados para exclusão de conta
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+
+  // Estados do Recorte de Avatar
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [isCropOpen, setIsCropOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +63,9 @@ export default function ProfileModal({
       setAvatarUrl(profile.avatar_url || '');
       setErrorMsg('');
       setSuccessMsg('');
+      setShowDeleteConfirm(false);
+      setDeletePassword('');
+      setDeleteError('');
     }
   }, [profile, isOpen]);
 
@@ -94,7 +106,7 @@ export default function ProfileModal({
         .from('avatars')
         .getPublicUrl(fileName);
 
-      const publicUrl = urlData.publicUrl;
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -115,7 +127,7 @@ export default function ProfileModal({
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUsername = username.trim().toLowerCase();
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
     const cleanFullName = fullName.trim();
 
     if (cleanUsername.length < 3) {
@@ -160,20 +172,60 @@ export default function ProfileModal({
     }
   };
 
+  const handleDeleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletePassword) {
+      setDeleteError('Digite sua senha para confirmar a exclusão.');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError('');
+
+    try {
+      // 1. Valida a senha atual autenticando diretamente no Supabase Auth
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password: deletePassword,
+      });
+
+      if (authError) {
+        throw new Error('A senha informada está incorreta.');
+      }
+
+      // 2. Com a senha validada, executa a RPC segura para deletar o usuário
+      const { error: rpcError } = await supabase.rpc('delete_user_account');
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      // 3. Encerra a sessão local
+      await supabase.auth.signOut();
+      if (onAccountDeleted) {
+        onAccountDeleted();
+      } else {
+        window.location.reload();
+      }
+    } catch (err: any) {
+      setDeleteError(err.message || 'Erro ao excluir a conta.');
+      setIsDeleting(false);
+    }
+  };
+
   const netWorth = totalBalance + totalGoals;
 
   return (
     <>
-      {/* Overlay transparente com desfoque total de fundo sem nada escurecido */}
       <div 
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent backdrop-blur-md animate-fade-in"
         onClick={onClose}
       >
         <div 
-          className="w-full max-w-lg p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto backdrop-blur-2xl"
+          className="w-full max-w-lg p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto backdrop-blur-2xl select-none"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header do Perfil com Avatar e Botão de Foto */}
+          {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
             <div className="flex items-center gap-3">
               <div className="relative group">
@@ -195,7 +247,7 @@ export default function ProfileModal({
                   title="Alterar foto de perfil"
                   className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-[var(--accent)] text-white flex items-center justify-center text-xs shadow-md hover:scale-110 transition-transform active:scale-95"
                 >
-                  📷
+                  <AppleEmoji emoji="📷" size={13} />
                 </button>
 
                 <input
@@ -246,7 +298,6 @@ export default function ProfileModal({
             </div>
           </div>
 
-          {/* Mensagens de Feedback */}
           {errorMsg && (
             <p className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium text-center">
               {errorMsg}
@@ -258,7 +309,7 @@ export default function ProfileModal({
             </p>
           )}
 
-          {/* Formulário de Dados Pessoais */}
+          {/* Dados Pessoais */}
           <form onSubmit={handleUpdateProfile} className="space-y-4">
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider">
@@ -271,7 +322,7 @@ export default function ProfileModal({
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
                 />
               </div>
 
@@ -282,7 +333,7 @@ export default function ProfileModal({
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
                 />
               </div>
 
@@ -292,7 +343,7 @@ export default function ProfileModal({
                   type="email"
                   disabled
                   value={profile.email}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] opacity-70 cursor-not-allowed"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] opacity-70 cursor-not-allowed select-text"
                 />
               </div>
             </div>
@@ -300,25 +351,26 @@ export default function ProfileModal({
             {/* Configuração de Tema */}
             <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
               <h4 className="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider">
-                Aparência do Dashboard
+                Aparência do Painel
               </h4>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'day', label: '☀️ Day' },
-                  { id: 'interestelar', label: '🌌 Interestelar' },
-                  { id: 'vintage_cute', label: '🌸 Vintage' },
+                  { id: 'day', label: 'Day', emoji: '☀️' },
+                  { id: 'interestelar', label: 'Interestelar', emoji: '🚀' },
+                  { id: 'vintage_cute', label: 'Vintage', emoji: '🌸' },
                 ].map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => onThemeChange(t.id)}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
                       currentTheme === t.id
                         ? 'bg-[var(--accent)] text-white border-transparent shadow-sm'
                         : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-main)]'
                     }`}
                   >
-                    {t.label}
+                    <AppleEmoji emoji={t.emoji} size={14} />
+                    <span>{t.label}</span>
                   </button>
                 ))}
               </div>
@@ -332,10 +384,84 @@ export default function ProfileModal({
               {loading ? 'Salvando alterações...' : 'Salvar Alterações'}
             </button>
           </form>
+
+          {/* ========================================================
+              ZONA DE PERIGO: EXCLUSÃO DE CONTA COM CONFIRMAÇÃO POR SENHA
+          ======================================================== */}
+          <div className="pt-4 border-t border-rose-500/20 space-y-3">
+            <h4 className="text-xs font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
+              <AppleEmoji emoji="⚠️" size={14} />
+              <span>Zona de Perigo</span>
+            </h4>
+
+            {!showDeleteConfirm ? (
+              <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-[var(--text-main)]">Excluir minha conta</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Apaga permanentemente seu perfil, saldo, caixinhas e transações.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/30 active:scale-95"
+                >
+                  Excluir Conta
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleDeleteAccount} className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3 animate-fade-in">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-rose-500">Ação irreversível!</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Digite sua senha atual para confirmar a exclusão definitiva da sua conta:
+                  </p>
+                </div>
+
+                {deleteError && (
+                  <p className="p-2 rounded-xl bg-rose-500/20 text-rose-500 text-[11px] font-bold text-center">
+                    {deleteError}
+                  </p>
+                )}
+
+                <div>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Sua senha atual"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-rose-500/30 text-xs text-[var(--text-main)] focus:outline-none focus:border-rose-500 select-text"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={isDeleting}
+                    className="flex-1 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    {isDeleting ? 'Excluindo conta...' : 'Confirmar e Deletar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeletePassword('');
+                      setDeleteError('');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--accent-light)] text-[var(--text-muted)] text-xs font-bold transition-all border border-[var(--border-subtle)]"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Modal de Zoom e Panning da Foto */}
       <AvatarCropModal
         imageSrc={tempImageSrc}
         isOpen={isCropOpen}
