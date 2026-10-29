@@ -3,19 +3,31 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
+import ThemeSelector from './components/ThemeSelector';
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState('day');
 
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
 
+  // Aplica a classe do tema no body do HTML
+  const applyTheme = (themeName: string) => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('theme-day', 'theme-interestelar', 'theme-vintage_cute');
+      document.body.classList.add(`theme-${themeName}`);
+    }
+    setTheme(themeName);
+  };
+
   const loadUserData = async (currentSession: any) => {
     if (!currentSession?.user) {
       setProfile(null);
+      applyTheme('day');
       setLoading(false);
       return;
     }
@@ -29,8 +41,10 @@ export default function Home() {
 
       if (!error && data) {
         setProfile(data);
+        applyTheme(data.theme_preference || 'day');
       } else {
         setProfile(null);
+        applyTheme('day');
       }
     } catch (e) {
       console.error(e);
@@ -97,6 +111,7 @@ export default function Home() {
 
       if (error) throw error;
       setProfile(data);
+      applyTheme('day');
     } catch (err: any) {
       setUsernameError(err.message || 'Erro ao registrar perfil');
     } finally {
@@ -109,63 +124,64 @@ export default function Home() {
     await supabase.auth.signOut();
     setSession(null);
     setProfile(null);
+    applyTheme('day');
     setLoading(false);
   };
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+      <main className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-400"></div>
-          <span className="text-xs text-slate-400">Carregando painel...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+          <span className="text-xs text-slate-400">Carregando Horizon Finances...</span>
         </div>
       </main>
     );
   }
 
-  // 1. Não autenticado -> Formulário de login/cadastro
+  // 1. Tela de Login/Cadastro
   if (!session) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4 bg-slate-900">
+      <main className="min-h-screen flex items-center justify-center p-4">
         <Auth onSuccess={() => loadUserData(session)} />
       </main>
     );
   }
 
-  // 2. Autenticado mas sem username (ex: login Google inicial)
+  // 2. Primeiro Login Google sem Username
   if (!profile) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4 bg-slate-900 text-white">
-        <div className="w-full max-w-md p-8 rounded-2xl bg-slate-800 border border-slate-700 shadow-2xl space-y-4">
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-md p-8 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-4">
           <div className="text-center">
-            <h2 className="text-xl font-black text-sky-400">Quase pronto!</h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <h2 className="text-xl font-black text-[var(--accent)]">Quase pronto!</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
               Escolha seu nome de usuário único para o Horizon Finances:
             </p>
           </div>
 
           {usernameError && (
-            <p className="text-xs text-rose-400 text-center font-bold bg-rose-500/10 p-2 rounded-lg border border-rose-500/20">
+            <p className="text-xs text-rose-500 text-center font-bold bg-rose-500/10 p-2 rounded-lg border border-rose-500/20">
               {usernameError}
             </p>
           )}
 
           <form onSubmit={handleCreateProfile} className="space-y-4">
             <div>
-              <label className="block text-[11px] font-bold text-slate-300 mb-1">Seu @username</label>
+              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Seu @username</label>
               <input
                 type="text"
                 required
                 placeholder="ex: guilherme"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                className="w-full px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
             <button
               type="submit"
               disabled={savingUsername}
-              className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 font-bold text-xs transition-all disabled:opacity-50"
+              className="w-full py-2.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-white font-bold text-xs transition-all disabled:opacity-50"
             >
               {savingUsername ? 'Salvando...' : 'Confirmar e Continuar'}
             </button>
@@ -175,23 +191,45 @@ export default function Home() {
     );
   }
 
-  // 3. Autenticado e com perfil pronto
+  // 3. Painel Autenticado com os 3 Temas Ativos
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-900 text-white">
-      <div className="w-full max-w-lg p-6 rounded-2xl bg-slate-800 border border-slate-700 shadow-xl text-center space-y-4">
-        <h1 className="text-2xl font-black text-sky-400">Sessão Ativa 🎉</h1>
-        <div className="text-xs text-slate-300 space-y-1">
-          <p><strong>Usuário:</strong> @{profile.username}</p>
-          <p><strong>E-mail:</strong> {session.user?.email}</p>
-          <p><strong>Tema Atual:</strong> {profile.theme_preference}</p>
+    <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto space-y-6">
+      {/* Topbar */}
+      <header className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-base shadow-inner">
+            {profile.username?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h1 className="text-base font-black tracking-tight leading-none text-[var(--text-main)]">Horizon Finances</h1>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5 font-medium">@{profile.username}</p>
+          </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs transition-all shadow-md active:scale-95"
-        >
-          Sair da Conta
-        </button>
-      </div>
+
+        <div className="flex items-center gap-3">
+          <ThemeSelector
+            currentTheme={theme}
+            userId={session.user.id}
+            onThemeChange={applyTheme}
+          />
+          <button
+            onClick={handleLogout}
+            className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold transition-all border border-rose-500/20 active:scale-95"
+          >
+            Sair
+          </button>
+        </div>
+      </header>
+
+      {/* Cartão de Boas-Vindas & Status */}
+      <section className="p-6 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-2">
+        <h2 className="text-xl font-bold tracking-tight text-[var(--text-main)]">
+          Bem-vindo de volta, @{profile.username}!
+        </h2>
+        <p className="text-xs text-[var(--text-muted)]">
+          Seu tema selecionado é <strong>{theme}</strong> e está sincronizado com o banco de dados.
+        </p>
+      </section>
     </main>
   );
 }

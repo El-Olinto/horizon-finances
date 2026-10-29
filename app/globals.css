@@ -2,13 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ==========================================
+   TEMA 1: DAY (Clean, Claro, Sky & Daylight)
+   ========================================== */
+body.theme-day {
+  --bg-main: #f0f7ff;
+  --bg-surface: #ffffff;
+  --bg-card: #f8fbff;
+  --border-subtle: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-light: #e0f2fe;
+}
+
+/* ==========================================
+   TEMA 2: INTERESTELAR (Dark, Liquid Glass, Cosmos)
+   ========================================== */
+body.theme-interestelar {
+  --bg-main: #060814;
+  --bg-surface: rgba(15, 23, 42, 0.75);
+  --bg-card: rgba(30, 41, 59, 0.55);
+  --border-subtle: rgba(148, 163, 184, 0.15);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent: #818cf8;
+  --accent-hover: #6366f1;
+  --accent-light: rgba(99, 102, 241, 0.15);
+}
+
+/* ==========================================
+   TEMA 3: VINTAGE CUTE (Pastel, Nostálgico, Acolhedor)
+   ========================================== */
+body.theme-vintage_cute {
+  --bg-main: #faf5ef;
+  --bg-surface: #fffdfa;
+  --bg-card: #f5ede2;
+  --border-subtle: #e8dccb;
+  --text-main: #4a3b32;
+  --text-muted: #8c7365;
+  --accent: #e07a5f;
+  --accent-hover: #c9654b;
+  --accent-light: #fae1d9;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  background-color: var(--bg-main);
+  color: var(--text-main);
   min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
