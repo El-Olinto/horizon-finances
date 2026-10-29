@@ -9,8 +9,8 @@ interface AuthProps {
 
 export default function Auth({ onSuccess }: AuthProps) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [identifier, setIdentifier] = useState(''); // Aceita e-mail OU username
-  const [email, setEmail] = useState(''); // Usado no cadastro
+  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,13 +40,14 @@ export default function Auth({ onSuccess }: AuthProps) {
 
     try {
       if (isSignUp) {
-        // CADASTRO
+        // --- CADASTRO ---
         const cleanUsername = username.trim().toLowerCase();
+        const cleanEmail = email.trim().toLowerCase();
+
         if (cleanUsername.length < 3) {
           throw new Error('O nome de usuário deve ter pelo menos 3 letras.');
         }
 
-        // Verifica se username já existe
         const { data: existingUser } = await supabase
           .from('profiles')
           .select('username')
@@ -58,7 +59,7 @@ export default function Auth({ onSuccess }: AuthProps) {
         }
 
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: cleanEmail,
           password,
         });
 
@@ -70,6 +71,7 @@ export default function Auth({ onSuccess }: AuthProps) {
               id: authData.user.id,
               username: cleanUsername,
               full_name: cleanUsername,
+              email: cleanEmail,
               theme_preference: 'day',
             },
           ]);
@@ -79,24 +81,23 @@ export default function Auth({ onSuccess }: AuthProps) {
 
         onSuccess();
       } else {
-        // LOGIN (E-mail ou Username)
+        // --- LOGIN ---
         const cleanInput = identifier.trim().toLowerCase();
         let targetEmail = cleanInput;
 
-        // Se não contiver '@' e '.', consideramos como @username
-        if (!cleanInput.includes('@') || !cleanInput.includes('.')) {
+        // Se digitou username (sem arroba), busca o email no perfil
+        if (!cleanInput.includes('@')) {
           const { data: profileData, error: profileErr } = await supabase
             .from('profiles')
-            .select('id')
+            .select('email')
             .eq('username', cleanInput)
             .maybeSingle();
 
-          if (profileErr || !profileData) {
+          if (profileErr || !profileData || !profileData.email) {
             throw new Error('Nome de usuário não encontrado.');
           }
 
-          // Se você salvou o e-mail no profile ou usa um alias, o login precisa do email auth:
-          // Caso a busca por e-mail exija permissão, tentamos autenticar diretamente se o identifier for e-mail.
+          targetEmail = profileData.email;
         }
 
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -105,6 +106,8 @@ export default function Auth({ onSuccess }: AuthProps) {
         });
 
         if (signInError) throw signInError;
+        
+        // Dispara o callback só depois que o signIn foi confirmado com sucesso
         onSuccess();
       }
     } catch (err: any) {
