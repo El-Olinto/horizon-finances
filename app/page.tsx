@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
 import ThemeSelector from './components/ThemeSelector';
 import NewTransactionModal from './components/NewTransactionModal';
 import NewGoalModal from './components/NewGoalModal';
+import CategoryChart from './components/CategoryChart';
 
 interface Transaction {
   id: string;
@@ -36,6 +37,11 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+
+  // Filtros de Transações
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   // Metas
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -77,6 +83,24 @@ export default function Home() {
 
     if (data) setGoals(data);
     setLoadingGoals(false);
+  };
+
+  const handleDeleteTransaction = async (txId: string) => {
+    if (!confirm('Deseja realmente excluir esta transação?')) return;
+
+    const { error } = await supabase.from('transactions').delete().eq('id', txId);
+    if (!error && session?.user) {
+      await fetchTransactions(session.user.id);
+    }
+  };
+
+  const handleDeleteGoal = async (goalId: string) => {
+    if (!confirm('Deseja realmente remover esta meta?')) return;
+
+    const { error } = await supabase.from('goals').delete().eq('id', goalId);
+    if (!error && session?.user) {
+      await fetchGoals(session.user.id);
+    }
   };
 
   const handleAddAmountToGoal = async (goalId: string, currentAmount: number, addition: number) => {
@@ -227,7 +251,6 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Balanço financeiro
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount), 0);
@@ -237,6 +260,15 @@ export default function Home() {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const currentBalance = totalIncome - totalExpense;
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      const matchesType = filterType === 'all' || tx.type === filterType;
+      const matchesCategory = filterCategory === 'all' || tx.category === filterCategory;
+      const matchesSearch = tx.title.toLowerCase().includes(searchTerm.toLowerCase().trim());
+      return matchesType && matchesCategory && matchesSearch;
+    });
+  }, [transactions, filterType, filterCategory, searchTerm]);
 
   if (loading || checkingProfile) {
     return (
@@ -260,7 +292,7 @@ export default function Home() {
   if (!profile || !profile.username) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md p-8 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5">
+        <div className="w-full max-w-md p-8 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5 animate-fade-in">
           <div className="text-center">
             <h2 className="text-xl font-black text-[var(--accent)]">Primeiro acesso com Google!</h2>
             <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -310,7 +342,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+    <main className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
       {/* Topbar */}
       <header className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm">
         <div className="flex items-center gap-3">
@@ -338,7 +370,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Cards de Balanço */}
+      {/* Cards de Métricas */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo Atual</span>
@@ -362,12 +394,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Metas Financeiras (Goals) */}
+      {/* Gráfico de Distribuição por Categorias */}
+      <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-[var(--text-main)]">Distribuição de Despesas</h2>
+          <p className="text-xs text-[var(--text-muted)]">Visão percentual dos gastos por categoria</p>
+        </div>
+        <CategoryChart transactions={transactions} />
+      </section>
+
+      {/* Metas & Objetivos */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[var(--text-main)]">Metas & Objetivos</h2>
-            <p className="text-xs text-[var(--text-muted)]">Acompanhe a evolução das suas economias</p>
+            <p className="text-xs text-[var(--text-muted)]">Acompanhe e gerencie a evolução das suas economias</p>
           </div>
           <button
             onClick={() => setIsGoalModalOpen(true)}
@@ -394,7 +435,7 @@ export default function Home() {
               return (
                 <div
                   key={g.id}
-                  className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3"
+                  className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3 relative group"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -403,10 +444,18 @@ export default function Home() {
                         {g.category} {g.deadline ? `• até ${g.deadline}` : ''}
                       </span>
                     </div>
-                    <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
+                      <button
+                        onClick={() => handleDeleteGoal(g.id)}
+                        title="Remover meta"
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-500/10 hover:text-rose-600 transition-colors text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Barra de Progresso */}
                   <div className="w-full h-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden">
                     <div
                       className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
@@ -433,12 +482,12 @@ export default function Home() {
         )}
       </section>
 
-      {/* Histórico e Ação de Transações */}
+      {/* Histórico e Transações com Filtros */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[var(--text-main)]">Transações Recentes</h2>
-            <p className="text-xs text-[var(--text-muted)]">Histórico financeiro em tempo real</p>
+            <p className="text-xs text-[var(--text-muted)]">Filtre e pesquise suas movimentações</p>
           </div>
           <button
             onClick={() => setIsTxModalOpen(true)}
@@ -448,20 +497,86 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Lista de Transações */}
+        {/* Barra de Filtros */}
+        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Buscar pelo título..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+
+          <div className="flex items-center p-1 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+            <button
+              onClick={() => setFilterType('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'all'
+                  ? 'bg-[var(--accent)] text-white shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+              }`}
+            >
+              Todas
+            </button>
+            <button
+              onClick={() => setFilterType('income')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'income'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+              }`}
+            >
+              Entradas
+            </button>
+            <button
+              onClick={() => setFilterType('expense')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'expense'
+                  ? 'bg-rose-500 text-white shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+              }`}
+            >
+              Saídas
+            </button>
+          </div>
+
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)]"
+          >
+            <option value="all">Todas Categorias</option>
+            <option value="Geral">Geral</option>
+            <option value="Alimentação">Alimentação</option>
+            <option value="Transporte">Transporte</option>
+            <option value="Lazer">Lazer</option>
+            <option value="Trabalho">Trabalho</option>
+            <option value="Contas">Contas</option>
+          </select>
+        </div>
+
+        {/* Lista de Transações Filtradas */}
         {loadingTx ? (
           <div className="py-8 text-center text-xs text-[var(--text-muted)]">Carregando movimentações...</div>
-        ) : transactions.length === 0 ? (
+        ) : filteredTransactions.length === 0 ? (
           <div className="py-10 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
-            <p className="text-xs font-medium text-[var(--text-muted)]">Nenhuma transação registrada ainda.</p>
-            <p className="text-[11px] text-[var(--text-muted)] mt-1">Clique em "Nova Movimentação" para começar.</p>
+            <p className="text-xs font-medium text-[var(--text-muted)]">
+              {transactions.length === 0
+                ? 'Nenhuma transação registrada ainda.'
+                : 'Nenhuma movimentação corresponde aos filtros selecionados.'}
+            </p>
+            {transactions.length === 0 && (
+              <p className="text-[11px] text-[var(--text-muted)] mt-1">Clique em "Nova Movimentação" para começar.</p>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
-            {transactions.map((tx) => (
+            {filteredTransactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors"
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors group"
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -479,14 +594,23 @@ export default function Home() {
                   </div>
                 </div>
 
-                <span
-                  className={`text-xs font-bold ${
-                    tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'
-                  }`}
-                >
-                  {tx.type === 'income' ? '+' : '-'} R${' '}
-                  {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`text-xs font-bold ${
+                      tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'
+                    }`}
+                  >
+                    {tx.type === 'income' ? '+' : '-'} R${' '}
+                    {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteTransaction(tx.id)}
+                    title="Excluir movimentação"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors text-xs opacity-70 group-hover:opacity-100"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             ))}
           </div>
