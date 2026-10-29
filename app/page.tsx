@@ -6,7 +6,10 @@ import Auth from './components/Auth';
 import ThemeSelector from './components/ThemeSelector';
 import NewTransactionModal from './components/NewTransactionModal';
 import NewGoalModal from './components/NewGoalModal';
+import EditGoalModal from './components/EditGoalModal';
+import ManageGoalMoneyModal from './components/ManageGoalMoneyModal';
 import CategoryChart from './components/CategoryChart';
+import ConfirmModal from './components/ConfirmModal';
 
 interface Transaction {
   id: string;
@@ -43,10 +46,28 @@ export default function Home() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Metas
+  // Caixinhas
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loadingGoals, setLoadingGoals] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+
+  // Controle de menu de 3 pontinhos e modais das caixinhas
+  const [openDropdownGoalId, setOpenDropdownGoalId] = useState<string | null>(null);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [managingGoal, setManagingGoal] = useState<Goal | null>(null);
+
+  // Modal Customizado de Confirmação (Eliminação)
+  const [confirmDeleteConfig, setConfirmDeleteConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    action: () => Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    action: async () => {},
+  });
 
   // Cadastro de Username para 1º Login Google
   const [newUsername, setNewUsername] = useState('');
@@ -85,34 +106,40 @@ export default function Home() {
     setLoadingGoals(false);
   };
 
-  const handleDeleteTransaction = async (txId: string) => {
-    if (!confirm('Deseja realmente excluir esta transação?')) return;
-
-    const { error } = await supabase.from('transactions').delete().eq('id', txId);
-    if (!error && session?.user) {
-      await fetchTransactions(session.user.id);
-    }
+  // Solicita confirmação visual para excluir transação
+  const promptDeleteTransaction = (tx: Transaction) => {
+    setConfirmDeleteConfig({
+      isOpen: true,
+      title: 'Excluir Movimentação 🗑️',
+      message: `Tem certeza que deseja apagar a transação "${tx.title}" no valor de R$ ${Number(tx.amount).toFixed(2)}? Essa ação não pode ser desfeita.`,
+      action: async () => {
+        const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
+        if (!error && session?.user) {
+          await fetchTransactions(session.user.id);
+        }
+      },
+    });
   };
 
-  const handleDeleteGoal = async (goalId: string) => {
-    if (!confirm('Deseja realmente remover esta meta?')) return;
-
-    const { error } = await supabase.from('goals').delete().eq('id', goalId);
-    if (!error && session?.user) {
-      await fetchGoals(session.user.id);
-    }
+  // Solicita confirmação visual para excluir caixinha
+  const promptDeleteGoal = (goal: Goal) => {
+    setOpenDropdownGoalId(null);
+    setConfirmDeleteConfig({
+      isOpen: true,
+      title: 'Excluir Caixinha 📦',
+      message: `Deseja realmente remover a caixinha "${goal.title}"? O saldo guardado nela (R$ ${Number(goal.current_amount || 0).toFixed(2)}) não será devolvido automaticamente à conta se você não fizer o resgate primeiro.`,
+      action: async () => {
+        const { error } = await supabase.from('goals').delete().eq('id', goal.id);
+        if (!error && session?.user) {
+          await fetchGoals(session.user.id);
+        }
+      },
+    });
   };
 
-  const handleAddAmountToGoal = async (goalId: string, currentAmount: number, addition: number) => {
-    const updated = Number(currentAmount) + addition;
-    const { error } = await supabase
-      .from('goals')
-      .update({ current_amount: updated })
-      .eq('id', goalId);
-
-    if (!error && session?.user) {
-      await fetchGoals(session.user.id);
-    }
+  const handleExecuteConfirm = async () => {
+    await confirmDeleteConfig.action();
+    setConfirmDeleteConfig((prev) => ({ ...prev, isOpen: false }));
   };
 
   const refreshUser = async () => {
@@ -251,6 +278,7 @@ export default function Home() {
     setLoading(false);
   };
 
+  // Cálculos financeiros consolidados
   const totalIncome = transactions
     .filter((t) => t.type === 'income')
     .reduce((acc, t) => acc + Number(t.amount), 0);
@@ -260,6 +288,9 @@ export default function Home() {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const currentBalance = totalIncome - totalExpense;
+
+  // Soma de todo o dinheiro acumulado em caixinhas
+  const totalInGoals = goals.reduce((acc, g) => acc + Number(g.current_amount || 0), 0);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -342,7 +373,10 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+    <main
+      className="min-h-screen flex flex-col p-4 sm:p-6 max-w-5xl mx-auto space-y-6 animate-fade-in"
+      onClick={() => setOpenDropdownGoalId(null)}
+    >
       {/* Topbar */}
       <header className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm">
         <div className="flex items-center gap-3">
@@ -370,15 +404,25 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Cards de Métricas */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Cards de Métricas Principais (4 Colunas) */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Saldo em Conta */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
-          <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo Atual</span>
+          <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)]">Saldo em Conta</span>
           <p className={`text-2xl font-black ${currentBalance >= 0 ? 'text-[var(--text-main)]' : 'text-rose-500'}`}>
             R$ {currentBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
         </div>
 
+        {/* Total em Caixinhas */}
+        <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
+          <span className="text-[10px] font-bold tracking-wider uppercase text-[var(--accent)]">Em Caixinhas 📦</span>
+          <p className="text-2xl font-black text-[var(--accent)]">
+            R$ {totalInGoals.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+
+        {/* Entradas */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-500">Entradas</span>
           <p className="text-2xl font-black text-emerald-500">
@@ -386,6 +430,7 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Saídas */}
         <div className="p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
           <span className="text-[10px] font-bold tracking-wider uppercase text-rose-500">Saídas</span>
           <p className="text-2xl font-black text-rose-500">
@@ -394,7 +439,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Gráfico de Distribuição por Categorias */}
+      {/* Gráfico de Distribuição */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4">
         <div>
           <h2 className="text-base font-bold text-[var(--text-main)]">Distribuição de Despesas</h2>
@@ -403,27 +448,27 @@ export default function Home() {
         <CategoryChart transactions={transactions} />
       </section>
 
-      {/* Metas & Objetivos */}
+      {/* Caixinhas & Metas */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-[var(--text-main)]">Metas & Objetivos</h2>
-            <p className="text-xs text-[var(--text-muted)]">Acompanhe e gerencie a evolução das suas economias</p>
+            <h2 className="text-base font-bold text-[var(--text-main)]">Caixinhas & Objetivos 📦</h2>
+            <p className="text-xs text-[var(--text-muted)]">O dinheiro guardado sai do saldo e volta quando você resgatar</p>
           </div>
           <button
             onClick={() => setIsGoalModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
           >
-            <span>+</span> Nova Meta
+            <span>+</span> Nova Caixinha
           </button>
         </div>
 
         {loadingGoals ? (
-          <div className="py-6 text-center text-xs text-[var(--text-muted)]">Carregando metas...</div>
+          <div className="py-6 text-center text-xs text-[var(--text-muted)]">Carregando caixinhas...</div>
         ) : goals.length === 0 ? (
           <div className="py-8 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
-            <p className="text-xs font-medium text-[var(--text-muted)]">Você ainda não tem metas cadastradas.</p>
-            <p className="text-[11px] text-[var(--text-muted)] mt-1">Crie um objetivo para acompanhar suas economias.</p>
+            <p className="text-xs font-medium text-[var(--text-muted)]">Você ainda não tem caixinhas criadas.</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-1">Crie sua primeira caixinha para reservar parte do seu saldo.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -431,6 +476,7 @@ export default function Home() {
               const current = Number(g.current_amount || 0);
               const target = Number(g.target_amount || 1);
               const progress = Math.min(Math.round((current / target) * 100), 100);
+              const isDropdownOpen = openDropdownGoalId === g.id;
 
               return (
                 <div
@@ -444,18 +490,51 @@ export default function Home() {
                         {g.category} {g.deadline ? `• até ${g.deadline}` : ''}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center gap-2 relative">
                       <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
+
+                      {/* Menu 3 Pontinhos */}
                       <button
-                        onClick={() => handleDeleteGoal(g.id)}
-                        title="Remover meta"
-                        className="w-6 h-6 rounded-lg flex items-center justify-center text-rose-400 hover:bg-rose-500/10 hover:text-rose-600 transition-colors text-xs"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenDropdownGoalId(isDropdownOpen ? null : g.id);
+                        }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] transition-colors text-sm font-bold"
+                        title="Opções da caixinha"
                       >
-                        ✕
+                        ⋯
                       </button>
+
+                      {isDropdownOpen && (
+                        <div
+                          className="absolute right-0 top-8 z-30 w-36 py-1 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xl animate-fade-in"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingGoal(g);
+                              setOpenDropdownGoalId(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[var(--accent-light)] flex items-center gap-2 transition-colors"
+                          >
+                            <span>✏️</span> Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => promptDeleteGoal(g)}
+                            className="w-full text-left px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors"
+                          >
+                            <span>🗑️</span> Excluir
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
+                  {/* Barra de Progresso */}
                   <div className="w-full h-2 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden">
                     <div
                       className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
@@ -463,16 +542,18 @@ export default function Home() {
                     ></div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <p className="text-[11px] text-[var(--text-muted)]">
                       R$ {current.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de R${' '}
                       {target.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
+
                     <button
-                      onClick={() => handleAddAmountToGoal(g.id, current, 50)}
-                      className="px-2.5 py-1 rounded-lg bg-[var(--accent-light)] text-[var(--accent)] text-[10px] font-bold hover:opacity-80 transition-opacity"
+                      type="button"
+                      onClick={() => setManagingGoal(g)}
+                      className="px-3 py-1.5 rounded-xl bg-[var(--accent-light)] text-[var(--accent)] text-[11px] font-bold hover:opacity-80 transition-all shadow-sm"
                     >
-                      + R$ 50
+                      Guardar / Resgatar
                     </button>
                   </div>
                 </div>
@@ -482,7 +563,7 @@ export default function Home() {
         )}
       </section>
 
-      {/* Histórico e Transações com Filtros */}
+      {/* Histórico e Transações */}
       <section className="p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -549,6 +630,7 @@ export default function Home() {
           >
             <option value="all">Todas Categorias</option>
             <option value="Geral">Geral</option>
+            <option value="Caixinhas">Caixinhas</option>
             <option value="Alimentação">Alimentação</option>
             <option value="Transporte">Transporte</option>
             <option value="Lazer">Lazer</option>
@@ -557,7 +639,7 @@ export default function Home() {
           </select>
         </div>
 
-        {/* Lista de Transações Filtradas */}
+        {/* Lista de Transações */}
         {loadingTx ? (
           <div className="py-8 text-center text-xs text-[var(--text-muted)]">Carregando movimentações...</div>
         ) : filteredTransactions.length === 0 ? (
@@ -604,7 +686,7 @@ export default function Home() {
                     {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                   <button
-                    onClick={() => handleDeleteTransaction(tx.id)}
+                    onClick={() => promptDeleteTransaction(tx)}
                     title="Excluir movimentação"
                     className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors text-xs opacity-70 group-hover:opacity-100"
                   >
@@ -617,7 +699,7 @@ export default function Home() {
         )}
       </section>
 
-      {/* Modais */}
+      {/* Modal: Nova Transação */}
       <NewTransactionModal
         userId={session.user.id}
         isOpen={isTxModalOpen}
@@ -625,11 +707,51 @@ export default function Home() {
         onSuccess={() => fetchTransactions(session.user.id)}
       />
 
+      {/* Modal: Nova Caixinha */}
       <NewGoalModal
         userId={session.user.id}
         isOpen={isGoalModalOpen}
         onClose={() => setIsGoalModalOpen(false)}
         onSuccess={() => fetchGoals(session.user.id)}
+      />
+
+      {/* Modal: Editar Caixinha */}
+      <EditGoalModal
+        goal={editingGoal}
+        isOpen={Boolean(editingGoal)}
+        onClose={() => setEditingGoal(null)}
+        onSuccess={() => {
+          if (session?.user) fetchGoals(session.user.id);
+        }}
+      />
+
+      {/* Modal: Guardar / Resgatar Dinheiro da Caixinha */}
+      <ManageGoalMoneyModal
+        goal={managingGoal}
+        userId={session.user.id}
+        currentBalance={currentBalance}
+        isOpen={Boolean(managingGoal)}
+        onClose={() => setManagingGoal(null)}
+        onSuccess={async () => {
+          if (session?.user) {
+            await Promise.all([
+              fetchTransactions(session.user.id),
+              fetchGoals(session.user.id),
+            ]);
+          }
+        }}
+      />
+
+      {/* Modal Customizado de Confirmação de Exclusão */}
+      <ConfirmModal
+        isOpen={confirmDeleteConfig.isOpen}
+        title={confirmDeleteConfig.title}
+        message={confirmDeleteConfig.message}
+        confirmText="Sim, excluir"
+        cancelText="Voltar"
+        isDestructive={true}
+        onConfirm={handleExecuteConfirm}
+        onCancel={() => setConfirmDeleteConfig((prev) => ({ ...prev, isOpen: false }))}
       />
     </main>
   );
