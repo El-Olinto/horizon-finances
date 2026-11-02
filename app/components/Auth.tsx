@@ -12,24 +12,18 @@ interface AuthProps {
 
 export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'verify_otp'>(initialMode);
-  
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [showTutorial, setShowTutorial] = useState(false);
 
-  // Estados de Autenticação
-  const [loginIdentifier, setLoginIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [email, setEmail] = useState('');
+  // Campos de entrada
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [resetEmail, setResetEmail] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -41,7 +35,10 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
   const openAuth = (selectedMode: 'signin' | 'signup') => {
     setMode(selectedMode);
     setErrorMessage('');
-    setSuccessMessage('');
+    setUsername('');
+    setPassword('');
+    setConfirmPassword('');
+    setFullName('');
     setIsModalOpen(true);
   };
 
@@ -62,82 +59,26 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMessage('');
-
-    try {
-      // 1. Valida o código numérico OTP enviado por e-mail
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token: otpCode.trim(),
-        type: 'signup',
-      });
-
-      if (error) throw error;
-
-      // 2. Criação garantida do perfil logo após a confirmação do código
-      if (data?.user) {
-        const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
-        await supabase.from('profiles').upsert([
-          {
-            id: data.user.id,
-            username: cleanUsername,
-            full_name: fullName.trim() || cleanUsername,
-            email: email.trim().toLowerCase(),
-            theme_preference: 'day',
-          },
-        ]);
-
-        await supabase.from('accounts').insert([
-          { user_id: data.user.id, name: 'Nubank', icon: '🟣', color: '#8a05be' },
-          { user_id: data.user.id, name: 'Inter', icon: '🟠', color: '#ff7a00' },
-          { user_id: data.user.id, name: 'Dinheiro em Espécie', icon: '💵', color: '#10b981' },
-        ]);
-      }
-
-      setSuccessMessage('E-mail verificado com sucesso! Entrando...');
-      setTimeout(() => onSuccess(), 800);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Código de confirmação incorreto ou expirado.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    try {
-      const cleanEmail = resetEmail.trim().toLowerCase();
-      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
-      });
-
-      if (error) throw error;
-      setSuccessMessage('Enviamos o link de recuperação para seu e-mail!');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Erro ao solicitar redefinição.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage('');
-    setSuccessMessage('');
+
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+
+    if (cleanUsername.length < 3) {
+      setErrorMessage('O nome de usuário deve ter no mínimo 3 caracteres.');
+      setLoading(false);
+      return;
+    }
+
+    // Domínio virtual para autenticação interna do Supabase sem envio de e-mails
+    const internalEmail = `${cleanUsername}@horizon.local`;
 
     try {
       if (mode === 'signup') {
-        const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
-        if (cleanUsername.length < 3) {
-          throw new Error('O nome de usuário deve ter no mínimo 3 caracteres.');
+        if (!fullName.trim()) {
+          throw new Error('Informe seu nome completo.');
         }
 
         if (password.length < 6) {
@@ -148,7 +89,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
           throw new Error('As senhas digitadas não coincidem.');
         }
 
-        // Verifica se username já existe antes de enviar e-mail
+        // Verifica se o @username já existe na tabela de perfis
         const { data: existingUser } = await supabase
           .from('profiles')
           .select('username')
@@ -159,12 +100,12 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
           throw new Error('Este @username já está em uso.');
         }
 
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: internalEmail,
           password,
           options: {
             data: {
-              full_name: fullName.trim() || cleanUsername,
+              full_name: fullName.trim(),
               username: cleanUsername,
             },
           },
@@ -172,46 +113,43 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
 
         if (signUpError) throw signUpError;
 
-        // Força sempre a etapa de OTP para bloquear entradas diretas
-        setMode('verify_otp');
-        setSuccessMessage(`Código de verificação enviado para ${email.trim().toLowerCase()}. Insira-o abaixo:`);
-      } else if (mode === 'signin') {
-        const cleanIdentifier = loginIdentifier.trim().toLowerCase().replace(/^@/, '');
-        let targetEmail = cleanIdentifier;
+        if (signUpData?.user) {
+          await supabase.from('profiles').upsert([
+            {
+              id: signUpData.user.id,
+              username: cleanUsername,
+              full_name: fullName.trim(),
+              email: internalEmail,
+              theme_preference: 'day',
+            },
+          ]);
 
-        if (!cleanIdentifier.includes('@') || !cleanIdentifier.includes('.')) {
-          const { data: userProfile, error: profileErr } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('username', cleanIdentifier)
-            .maybeSingle();
-
-          if (profileErr || !userProfile || !userProfile.email) {
-            throw new Error('Nome de usuário não encontrado.');
-          }
-          targetEmail = userProfile.email;
+          await supabase.from('accounts').insert([
+            { user_id: signUpData.user.id, name: 'Nubank', icon: '🟣', color: '#8a05be' },
+            { user_id: signUpData.user.id, name: 'Inter', icon: '🟠', color: '#ff7a00' },
+            { user_id: signUpData.user.id, name: 'Dinheiro em Espécie', icon: '💵', color: '#10b981' },
+          ]);
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
-          email: targetEmail,
+        onSuccess();
+      } else {
+        // Modo Login por Usuário e Senha
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: internalEmail,
           password,
         });
 
-        if (error) {
-          if (error.message.includes('Email not confirmed')) {
-            setMode('verify_otp');
-            setEmail(targetEmail);
-            throw new Error('Seu e-mail ainda não foi validado. Digite o código recebido:');
+        if (signInError) {
+          if (signInError.message.includes('Invalid login credentials')) {
+            throw new Error('Usuário ou senha incorretos.');
           }
-          if (error.message.includes('Invalid login credentials')) {
-            throw new Error('Credenciais incorretas.');
-          }
-          throw error;
+          throw signInError;
         }
+
         onSuccess();
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro na autenticação.');
+      setErrorMessage(err.message || 'Erro ao processar autenticação.');
     } finally {
       setLoading(false);
     }
@@ -250,7 +188,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                 Domine sua órbita financeira.
               </h1>
               <p className="text-sm sm:text-base text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">
-                Gestão prática com separação por bancos, caixinhas blindadas e modo de privacidade. Sem distrações.
+                Gestão prática com separação por bancos, caixinhas blindadas e modo de privacidade. Sem burocracias.
               </p>
             </div>
 
@@ -293,7 +231,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                   <span>Cadastre seus Bancos</span>
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  No topo do painel, clique em <strong>"Gerenciar Carteiras"</strong>. Adicione onde o seu dinheiro fica fisicamente (ex: Nubank, Inter ou Espécie em mãos).
+                  No painel, acesse <strong>"Gerenciar Carteiras"</strong> e informe onde o seu dinheiro fica fisicamente (Nubank, Inter ou Dinheiro em Espécie).
                 </p>
               </div>
 
@@ -304,7 +242,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                   <span>Lançamentos Diários</span>
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Clique em <strong>"Novo Lançamento"</strong>. Digite o valor, selecione se é Entrada ou Saída, informe a categoria e escolha de qual banco esse dinheiro transitou.
+                  Clique em <strong>"Novo Lançamento"</strong>, informe o valor, categoria e aponte em qual carteira a quantia foi movimentada.
                 </p>
               </div>
 
@@ -312,10 +250,10 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                 <span className="text-[10px] font-black uppercase text-rose-400">Passo 3</span>
                 <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                   <AppleEmoji emoji="🔒" size={14} />
-                  <span>Crie Caixinhas para o Futuro</span>
+                  <span>Crie Caixinhas de Metas</span>
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Na seção de Caixinhas, clique em <strong>"Nova Caixinha"</strong> para criar um objetivo. O dinheiro reservado nela é deduzido do seu saldo visível para blindar a reserva.
+                  Na seção de Caixinhas, guarde valores com objetivos definidos. Esse valor sai do saldo visível para blindar suas reservas.
                 </p>
               </div>
 
@@ -326,7 +264,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                   <span>Privacidade e Exportação</span>
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Está em público? Clique no <strong>olhinho</strong> no topo para mascarar os valores (`••••••`). Para prestação de contas, clique em <strong>"Exportar CSV"</strong>.
+                  Em locais públicos, use o botão de <strong>olho</strong> para mascarar todos os valores (`••••••`) e exporte relatórios limpos em CSV a qualquer hora.
                 </p>
               </div>
             </div>
@@ -336,7 +274,7 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                 onClick={() => openAuth('signup')}
                 className="px-8 py-3 rounded-full text-sm font-bold text-slate-950 bg-sky-400 hover:bg-sky-300 transition-all active:scale-95"
               >
-                Tudo certo, criar minha conta
+                Criar Minha Conta
               </button>
             </div>
           </div>
@@ -366,218 +304,139 @@ export default function Auth({ onSuccess, initialMode = 'signin' }: AuthProps) {
                 <Logo size={32} />
               </div>
               <h2 className="text-lg font-black text-white pt-1">
-                {mode === 'signin' && 'Acesse sua conta'}
-                {mode === 'signup' && 'Crie sua conta'}
-                {mode === 'forgot' && 'Recuperar senha'}
-                {mode === 'verify_otp' && 'Validação por Código'}
+                {mode === 'signin' ? 'Acesse sua conta' : 'Crie sua conta'}
               </h2>
               <p className="text-[11px] text-slate-400">
-                {mode === 'verify_otp'
-                  ? 'Digite o código de 6 dígitos que enviamos ao seu e-mail.'
-                  : 'Autenticação de acesso.'}
+                {mode === 'signin' ? 'Entre com seu nome de usuário e senha' : 'Sem e-mails. Apenas usuário e senha.'}
               </p>
             </div>
 
-            {mode === 'verify_otp' ? (
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                {errorMessage && (
-                  <p className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
-                    {errorMessage}
-                  </p>
-                )}
-                {successMessage && (
-                  <p className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium text-center leading-relaxed">
-                    {successMessage}
-                  </p>
-                )}
+            <div className="flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setErrorMessage('');
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  mode === 'signin' ? 'bg-sky-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setErrorMessage('');
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                  mode === 'signup' ? 'bg-sky-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Cadastrar
+              </button>
+            </div>
+
+            {errorMessage && (
+              <p className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
+                {errorMessage}
+              </p>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {mode === 'signup' && (
                 <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1">Nome Completo</label>
                   <input
                     type="text"
                     required
-                    maxLength={6}
-                    placeholder="Ex: 123456"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    className="w-full text-center tracking-widest text-lg font-black px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-sky-400"
+                    placeholder="Ex: Guilherme Silva"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
                   />
                 </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">Nome de Usuário (@)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ex: guilherme"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">Senha</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              {mode === 'signup' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1">Confirmar Senha</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 rounded-xl bg-sky-400 text-slate-950 font-black text-xs hover:bg-sky-300 transition-colors mt-2 disabled:opacity-50"
+              >
+                {loading ? 'Processando...' : mode === 'signin' ? 'Acessar Painel' : 'Criar Minha Conta'}
+              </button>
+
+              <div className="pt-2 border-t border-slate-800 mt-3">
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-xs transition-all active:scale-95 disabled:opacity-50"
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={googleLoading}
+                  className="w-full py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white flex items-center justify-center gap-2.5 transition-colors disabled:opacity-50"
                 >
-                  {loading ? 'Verificando...' : 'Confirmar e Iniciar'}
-                </button>
-              </form>
-            ) : (
-              <>
-                {mode !== 'forgot' && (
-                  <div className="flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setMode('signin')}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                        mode === 'signin' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Entrar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMode('signup')}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                        mode === 'signup' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Cadastrar
-                    </button>
-                  </div>
-                )}
-
-                {errorMessage && (
-                  <p className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium text-center">
-                    {errorMessage}
-                  </p>
-                )}
-                {successMessage && (
-                  <p className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium text-center">
-                    {successMessage}
-                  </p>
-                )}
-
-                {mode === 'forgot' ? (
-                  <form onSubmit={handleForgotPassword} className="space-y-3">
-                    <input
-                      type="email"
-                      required
-                      placeholder="seu@email.com"
-                      value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"
+                  {/* Logo oficial da Google */}
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                     />
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-2.5 rounded-xl bg-sky-400 text-slate-950 font-black text-xs"
-                    >
-                      {loading ? 'Enviando...' : 'Enviar Link de Redefinição'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMode('signin')}
-                      className="w-full text-center text-[10px] font-bold text-slate-400 hover:text-white mt-1"
-                    >
-                      ← Voltar ao login
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleSubmit} className="space-y-3">
-                    {mode === 'signup' && (
-                      <>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Nome Completo"
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                        />
-                        <input
-                          type="text"
-                          required
-                          placeholder="Nome de Usuário (@)"
-                          value={username}
-                          onChange={(e) => setUsername(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                        />
-                        <input
-                          type="email"
-                          required
-                          placeholder="E-mail"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                        />
-                      </>
-                    )}
-
-                    {mode === 'signin' && (
-                      <input
-                        type="text"
-                        required
-                        placeholder="E-mail ou @usuário"
-                        value={loginIdentifier}
-                        onChange={(e) => setLoginIdentifier(e.target.value)}
-                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                      />
-                    )}
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[10px] font-bold text-slate-400">
-                          {mode === 'signup' ? 'Senha (mín. 6)' : 'Senha'}
-                        </label>
-                        {mode === 'signin' && (
-                          <button
-                            type="button"
-                            onClick={() => setMode('forgot')}
-                            className="text-[10px] text-sky-400 hover:underline"
-                          >
-                            Esqueceu a senha?
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        type="password"
-                        required
-                        minLength={6}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-
-                    {mode === 'signup' && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                          Confirmar Senha
-                        </label>
-                        <input
-                          type="password"
-                          required
-                          minLength={6}
-                          placeholder="••••••••"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-2.5 rounded-xl bg-sky-400 text-slate-950 font-black text-xs hover:bg-sky-300 transition-colors mt-2"
-                    >
-                      {loading ? 'Processando...' : mode === 'signin' ? 'Acessar Painel' : 'Validar E-mail e Criar'}
-                    </button>
-
-                    <div className="pt-2 border-t border-slate-800 mt-3">
-                      <button
-                        type="button"
-                        onClick={handleGoogleLogin}
-                        disabled={googleLoading}
-                        className="w-full py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white flex items-center justify-center gap-2 transition-colors"
-                      >
-                        <AppleEmoji emoji="🌐" size={14} />
-                        <span>Entrar com Google</span>
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </>
-            )}
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>Entrar com Google</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
