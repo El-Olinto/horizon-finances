@@ -45,13 +45,13 @@ export default function ProfileModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados para exclusão de conta
+  // Estados para exclusão e backup
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
 
-  // Estados do Recorte de Avatar
+  // Estados do Recorte
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [isCropOpen, setIsCropOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,6 +172,50 @@ export default function ProfileModal({
     }
   };
 
+  const handleResetData = async () => {
+    if (
+      !confirm(
+        'ATENÇÃO: Isso formatará seus dados atuais (transações, metas e carteiras), mas UM BACKUP AUTOMÁTICO será salvo antes da limpeza. Deseja formatar?'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.rpc('reset_user_data');
+      if (error) throw error;
+      alert('Dados formatados com sucesso! Um backup seguro foi armazenado.');
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Erro ao formatar os dados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (
+      !confirm(
+        'Deseja restaurar seus dados anteriores ao último reset? Os dados atuais serão substituídos pelos do backup.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.rpc('restore_last_backup');
+      if (error) throw error;
+      alert('Backup restaurado com sucesso! Seus dados foram recuperados.');
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Nenhum backup encontrado para restauração.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deletePassword) {
@@ -183,7 +227,6 @@ export default function ProfileModal({
     setDeleteError('');
 
     try {
-      // 1. Valida a senha atual autenticando diretamente no Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: profile.email,
         password: deletePassword,
@@ -193,14 +236,9 @@ export default function ProfileModal({
         throw new Error('A senha informada está incorreta.');
       }
 
-      // 2. Com a senha validada, executa a RPC segura para deletar o usuário
       const { error: rpcError } = await supabase.rpc('delete_user_account');
+      if (rpcError) throw rpcError;
 
-      if (rpcError) {
-        throw rpcError;
-      }
-
-      // 3. Encerra a sessão local
       await supabase.auth.signOut();
       if (onAccountDeleted) {
         onAccountDeleted();
@@ -217,11 +255,11 @@ export default function ProfileModal({
 
   return (
     <>
-      <div 
+      <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent backdrop-blur-md animate-fade-in"
         onClick={onClose}
       >
-        <div 
+        <div
           className="w-full max-w-lg p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto backdrop-blur-2xl select-none"
           onClick={(e) => e.stopPropagation()}
         >
@@ -317,7 +355,9 @@ export default function ProfileModal({
               </h4>
 
               <div>
-                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">Nome Completo</label>
+                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">
+                  Nome Completo
+                </label>
                 <input
                   type="text"
                   value={fullName}
@@ -327,7 +367,9 @@ export default function ProfileModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">Nome de Usuário (@)</label>
+                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">
+                  Nome de Usuário (@)
+                </label>
                 <input
                   type="text"
                   required
@@ -338,7 +380,9 @@ export default function ProfileModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">E-mail Cadastrado</label>
+                <label className="block text-[11px] font-bold text-[var(--text-muted)] mb-1">
+                  E-mail Cadastrado
+                </label>
                 <input
                   type="email"
                   disabled
@@ -386,7 +430,7 @@ export default function ProfileModal({
           </form>
 
           {/* ========================================================
-              ZONA DE PERIGO: EXCLUSÃO DE CONTA COM CONFIRMAÇÃO POR SENHA
+              ZONA DE PERIGO: FORMATAR, RESTAURAR E EXCLUIR
           ======================================================== */}
           <div className="pt-4 border-t border-rose-500/20 space-y-3">
             <h4 className="text-xs font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -394,12 +438,49 @@ export default function ProfileModal({
               <span>Zona de Perigo</span>
             </h4>
 
+            {/* Formatar Conta com Backup Automático */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-[var(--text-main)]">Formatar / Reiniciar Conta</p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Apaga movimentações e metas. Um backup automático é gravado antes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetData}
+                disabled={loading}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-bold transition-all border border-amber-500/30 active:scale-95"
+              >
+                Formatar Dados
+              </button>
+            </div>
+
+            {/* Restaurar Último Backup */}
+            <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <p className="text-xs font-bold text-[var(--text-main)]">Restaurar Último Backup</p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Se arrependeu de ter formatado? Restaure tudo ao estado anterior.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRestoreBackup}
+                disabled={loading}
+                className="px-3.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500 hover:text-white text-sky-400 text-xs font-bold transition-all border border-sky-500/30 active:scale-95"
+              >
+                Restaurar Backup
+              </button>
+            </div>
+
+            {/* Exclusão Definitiva */}
             {!showDeleteConfirm ? (
               <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <p className="text-xs font-bold text-[var(--text-main)]">Excluir minha conta</p>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    Apaga permanentemente seu perfil, saldo, caixinhas e transações.
+                    Apaga permanentemente seu perfil, dados e usuário de acesso.
                   </p>
                 </div>
                 <button
@@ -411,11 +492,14 @@ export default function ProfileModal({
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleDeleteAccount} className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3 animate-fade-in">
+              <form
+                onSubmit={handleDeleteAccount}
+                className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3 animate-fade-in"
+              >
                 <div className="space-y-1">
                   <p className="text-xs font-bold text-rose-500">Ação irreversível!</p>
                   <p className="text-[11px] text-[var(--text-muted)]">
-                    Digite sua senha atual para confirmar a exclusão definitiva da sua conta:
+                    Digite sua senha atual para confirmar a exclusão definitiva:
                   </p>
                 </div>
 

@@ -11,9 +11,11 @@ import NewGoalModal from './components/NewGoalModal';
 import EditGoalModal from './components/EditGoalModal';
 import ManageGoalMoneyModal from './components/ManageGoalMoneyModal';
 import CategoryChart from './components/CategoryChart';
+import TimeChart from './components/TimeChart';
 import ConfirmModal from './components/ConfirmModal';
 import AppleEmoji from './components/AppleEmoji';
 import ResetPasswordModal from './components/ResetPasswordModal';
+import ManageAccountsModal, { AccountItem } from './components/ManageAccountsModal';
 
 interface Transaction {
   id: string;
@@ -22,6 +24,7 @@ interface Transaction {
   type: 'income' | 'expense';
   category: string;
   date: string;
+  account_id?: string;
 }
 
 interface Goal {
@@ -40,6 +43,10 @@ export default function Home() {
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [theme, setTheme] = useState('interestelar');
 
+  // Modo Privado (Ocultar Valores)
+  const [isPrivateMode, setIsPrivateMode] = useState(false);
+
+  // Navegação
   const [currentNavTab, setCurrentNavTab] = useState<'inicio' | 'transacoes' | 'metas' | 'analises'>('inicio');
   const [activeSidebarView, setActiveSidebarView] = useState<'dashboard' | 'coming_soon'>('dashboard');
 
@@ -48,22 +55,37 @@ export default function Home() {
   const transacoesSectionRef = useRef<HTMLElement>(null);
   const analisesSectionRef = useRef<HTMLElement>(null);
 
+  // Modais de Controle
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const [isAccountsModalOpen, setIsAccountsModalOpen] = useState(false);
 
+  // Carteiras e Bancos
+  const [accounts, setAccounts] = useState<AccountItem[]>([]);
+  const [filterAccount, setFilterAccount] = useState<string>('all');
+
+  // Transações
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTx, setLoadingTx] = useState(false);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+  // Minimização de Secções
+  const [isChartsMinimized, setIsChartsMinimized] = useState(false);
+  const [isGoalsMinimized, setIsGoalsMinimized] = useState(false);
+  const [isTransactionsMinimized, setIsTransactionsMinimized] = useState(false);
+
+  // Filtros e Ordenação
+  const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>('date_desc');
+  const [filterPeriod, setFilterPeriod] = useState<'all' | 'week' | 'month'>('all');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
+  // Caixinhas / Metas
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loadingGoals, setLoadingGoals] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-
   const [openDropdownGoalId, setOpenDropdownGoalId] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [managingGoal, setManagingGoal] = useState<Goal | null>(null);
@@ -80,7 +102,7 @@ export default function Home() {
     action: async () => {},
   });
 
-  // Primeiro Acesso (Google OAuth) - Username e Senha
+  // Primeiro Acesso com Google OAuth
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [usernameError, setUsernameError] = useState('');
@@ -89,6 +111,7 @@ export default function Home() {
   const isAnyModalOpen =
     isProfileModalOpen ||
     isResetPasswordOpen ||
+    isAccountsModalOpen ||
     isTxModalOpen ||
     Boolean(editingTransaction) ||
     isGoalModalOpen ||
@@ -98,7 +121,7 @@ export default function Home() {
 
   const applyTheme = async (themeName: string) => {
     if (typeof document !== 'undefined') {
-      document.body.classList.remove('theme-day', 'theme-interestelar', 'theme-vintage_cute');
+      document.body.classList.remove('theme-day', 'theme-interestelar', 'theme-vintage_cute', 'theme-editorial');
       document.body.classList.add(`theme-${themeName}`);
     }
     setTheme(themeName);
@@ -109,6 +132,16 @@ export default function Home() {
         .update({ theme_preference: themeName })
         .eq('id', session.user.id);
     }
+  };
+
+  const fetchAccounts = async (userId: string) => {
+    const { data } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (data) setAccounts(data);
   };
 
   const fetchTransactions = async (userId: string) => {
@@ -139,7 +172,7 @@ export default function Home() {
     setConfirmDeleteConfig({
       isOpen: true,
       title: theme === 'vintage_cute' ? 'Eliminar Registo?' : 'Eliminar Movimentação',
-      message: `Tem a certeza de que pretende eliminar a transação "${tx.title}" no montante de R$ ${Number(tx.amount).toFixed(2)}?`,
+      message: `Tem a certeza de que pretende eliminar "${tx.title}" no valor de R$ ${Number(tx.amount).toFixed(2)}?`,
       action: async () => {
         const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
         if (!error && session?.user) {
@@ -154,7 +187,7 @@ export default function Home() {
     setConfirmDeleteConfig({
       isOpen: true,
       title: theme === 'vintage_cute' ? 'Remover Caixinha?' : 'Eliminar Caixinha',
-      message: `Pretende mesmo eliminar a caixinha "${goal.title}"? O montante guardado nela (R$ ${Number(goal.current_amount || 0).toFixed(2)}) não regressará ao saldo automaticamente a menos que faça o resgate antes.`,
+      message: `Pretende eliminar a caixinha "${goal.title}"? O valor guardado não volta automaticamente ao saldo se não resgatar antes.`,
       action: async () => {
         const { error } = await supabase.from('goals').delete().eq('id', goal.id);
         if (!error && session?.user) {
@@ -189,28 +222,30 @@ export default function Home() {
         .eq('id', freshSession.user.id)
         .maybeSingle();
 
-      if (!data && freshSession.user.email) {
-        const { data: dataByEmail } = await supabase
+      // Sincroniza metadados do cadastro OTP caso o registo na tabela ainda não tenha subido
+      if (!data && freshSession.user.user_metadata?.username) {
+        const meta = freshSession.user.user_metadata;
+        const { data: createdProfile } = await supabase
           .from('profiles')
-          .select('*')
-          .eq('email', freshSession.user.email.toLowerCase())
-          .maybeSingle();
-
-        if (dataByEmail) {
-          data = dataByEmail;
-          if (data.id !== freshSession.user.id) {
-            await supabase
-              .from('profiles')
-              .update({ id: freshSession.user.id })
-              .eq('email', freshSession.user.email.toLowerCase());
-          }
-        }
+          .upsert([
+            {
+              id: freshSession.user.id,
+              username: meta.username,
+              full_name: meta.full_name || meta.username,
+              email: freshSession.user.email?.toLowerCase(),
+              theme_preference: 'day',
+            },
+          ])
+          .select()
+          .single();
+        data = createdProfile;
       }
 
       if (data && data.username) {
         setProfile(data);
         applyTheme(data.theme_preference || 'day');
         await Promise.all([
+          fetchAccounts(freshSession.user.id),
           fetchTransactions(freshSession.user.id),
           fetchGoals(freshSession.user.id),
         ]);
@@ -231,7 +266,6 @@ export default function Home() {
     refreshUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      // Quando o usuário chega pelo link do email de recuperação de senha
       if (event === 'PASSWORD_RECOVERY') {
         setSession(currentSession);
         setIsResetPasswordOpen(true);
@@ -247,6 +281,7 @@ export default function Home() {
         setProfile(null);
         setTransactions([]);
         setGoals([]);
+        setAccounts([]);
         applyTheme('interestelar');
         setCheckingProfile(false);
         setLoading(false);
@@ -262,7 +297,7 @@ export default function Home() {
 
     const cleanUsername = newUsername.trim().toLowerCase().replace(/^@/, '');
     if (cleanUsername.length < 3) {
-      setUsernameError('O nome de usuário precisa ter pelo menos 3 caracteres.');
+      setUsernameError('O @username deve ter no mínimo 3 caracteres.');
       return;
     }
 
@@ -281,13 +316,10 @@ export default function Home() {
         .eq('username', cleanUsername)
         .maybeSingle();
 
-      if (existing) throw new Error('Este @username já está registrado por outra pessoa.');
+      if (existing) throw new Error('Este @username já está em uso.');
 
-      const { error: passwordError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (passwordError) throw passwordError;
+      const { error: passErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (passErr) throw passErr;
 
       const { data, error } = await supabase
         .from('profiles')
@@ -305,6 +337,13 @@ export default function Home() {
         .single();
 
       if (error) throw error;
+
+      await supabase.from('accounts').insert([
+        { user_id: session.user.id, name: 'Nubank', icon: '🟣', color: '#8a05be' },
+        { user_id: session.user.id, name: 'Inter', icon: '🟠', color: '#ff7a00' },
+        { user_id: session.user.id, name: 'Dinheiro em Espécie', icon: '💵', color: '#10b981' },
+      ]);
+
       setProfile(data);
       applyTheme('day');
     } catch (err: any) {
@@ -321,6 +360,7 @@ export default function Home() {
     setProfile(null);
     setTransactions([]);
     setGoals([]);
+    setAccounts([]);
     applyTheme('interestelar');
     setLoading(false);
   };
@@ -336,14 +376,79 @@ export default function Home() {
   const currentBalance = totalIncome - totalExpense;
   const totalInGoals = goals.reduce((acc, g) => acc + Number(g.current_amount || 0), 0);
 
+  const accountMap = useMemo(() => {
+    const map = new Map<string, AccountItem>();
+    accounts.forEach((acc) => map.set(acc.id, acc));
+    return map;
+  }, [accounts]);
+
+  const isDateInCurrentWeek = (dateStr: string) => {
+    const target = new Date(dateStr + 'T00:00:00');
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    return target >= startOfWeek && target <= endOfWeek;
+  };
+
+  const isDateInCurrentMonth = (dateStr: string) => {
+    const target = new Date(dateStr + 'T00:00:00');
+    const now = new Date();
+    return target.getFullYear() === now.getFullYear() && target.getMonth() === now.getMonth();
+  };
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       const matchesType = filterType === 'all' || tx.type === filterType;
       const matchesCategory = filterCategory === 'all' || tx.category === filterCategory;
+      const matchesAccount = filterAccount === 'all' || tx.account_id === filterAccount;
       const matchesSearch = tx.title.toLowerCase().includes(searchTerm.toLowerCase().trim());
-      return matchesType && matchesCategory && matchesSearch;
+
+      let matchesPeriod = true;
+      if (filterPeriod === 'week') matchesPeriod = isDateInCurrentWeek(tx.date);
+      if (filterPeriod === 'month') matchesPeriod = isDateInCurrentMonth(tx.date);
+
+      return matchesType && matchesCategory && matchesAccount && matchesSearch && matchesPeriod;
     });
-  }, [transactions, filterType, filterCategory, searchTerm]);
+  }, [transactions, filterType, filterCategory, filterAccount, searchTerm, filterPeriod]);
+
+  const groupedTransactionsByDay = useMemo(() => {
+    const groups: Record<string, Transaction[]> = {};
+
+    filteredTransactions.forEach((tx) => {
+      const dayKey = tx.date || 'Sem data';
+      if (!groups[dayKey]) groups[dayKey] = [];
+      groups[dayKey].push(tx);
+    });
+
+    Object.keys(groups).forEach((day) => {
+      groups[day].sort((a, b) => {
+        if (sortOrder === 'amount_desc') return Number(b.amount) - Number(a.amount);
+        if (sortOrder === 'amount_asc') return Number(a.amount) - Number(b.amount);
+        return 0;
+      });
+    });
+
+    const sortedDays = Object.keys(groups).sort((a, b) => {
+      if (sortOrder === 'date_asc') return new Date(a).getTime() - new Date(b).getTime();
+      return new Date(b).getTime() - new Date(a).getTime();
+    });
+
+    return sortedDays.map((day) => ({
+      date: day,
+      items: groups[day],
+    }));
+  }, [filteredTransactions, sortOrder]);
+
+  const formatMoney = (val: number, prefix: string = 'R$ ') => {
+    if (isPrivateMode) return '••••••';
+    return `${prefix}${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  };
 
   const handleExportCSV = () => {
     const listToExport = filteredTransactions.length > 0 ? filteredTransactions : transactions;
@@ -353,22 +458,50 @@ export default function Home() {
       return;
     }
 
-    const headers = ['Título', 'Tipo', 'Categoria', 'Valor (R$)', 'Data'];
-    const rows = listToExport.map((t) => [
-      `"${t.title.replace(/"/g, '""')}"`,
-      t.type === 'income' ? 'Entrada' : 'Saída',
-      `"${t.category}"`,
-      Number(t.amount).toFixed(2).replace('.', ','),
-      t.date,
-    ]);
+    const headers = ['ID', 'Data', 'Título da Movimentação', 'Tipo', 'Categoria', 'Instituição / Carteira', 'Valor (R$)'];
 
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    let sumIncome = 0;
+    let sumExpense = 0;
+
+    const rows = listToExport.map((t, idx) => {
+      const isInc = t.type === 'income';
+      if (isInc) sumIncome += Number(t.amount);
+      else sumExpense += Number(t.amount);
+
+      const acc = t.account_id ? accountMap.get(t.account_id) : null;
+      const accName = acc ? `${acc.icon || ''} ${acc.name}`.trim() : 'Geral';
+
+      return [
+        `#${idx + 1}`,
+        t.date,
+        `"${t.title.replace(/"/g, '""')}"`,
+        isInc ? 'Entrada (+)' : 'Saída (-)',
+        `"${t.category}"`,
+        `"${accName.replace(/"/g, '""')}"`,
+        Number(t.amount).toFixed(2).replace('.', ','),
+      ];
+    });
+
+    const separator = ['---', '---', '---', '---', '---', '---', '---'];
+    const rowTotalIncome = ['', '', 'TOTAL DE ENTRADAS', 'Entradas', '', '', sumIncome.toFixed(2).replace('.', ',')];
+    const rowTotalExpense = ['', '', 'TOTAL DE SAÍDAS', 'Saídas', '', '', sumExpense.toFixed(2).replace('.', ',')];
+    const rowBalance = ['', '', 'SALDO CONSOLIDADO', '', '', '', (sumIncome - sumExpense).toFixed(2).replace('.', ',')];
+
+    const allContent = [
+      headers.join(';'),
+      ...rows.map((r) => r.join(';')),
+      separator.join(';'),
+      rowTotalIncome.join(';'),
+      rowTotalExpense.join(';'),
+      rowBalance.join(';'),
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + allContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
 
     link.setAttribute('href', url);
-    link.setAttribute('download', `horizon_finances_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `horizon_extrato_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -380,16 +513,10 @@ export default function Home() {
     setActiveSidebarView('dashboard');
 
     if (!scrollContainerRef.current) return;
-
-    if (tab === 'inicio') {
-      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tab === 'metas') {
-      metasSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (tab === 'transacoes') {
-      transacoesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (tab === 'analises') {
-      analisesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (tab === 'inicio') scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (tab === 'metas') metasSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    else if (tab === 'transacoes') transacoesSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
+    else if (tab === 'analises') analisesSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   if (loading || checkingProfile) {
@@ -407,8 +534,21 @@ export default function Home() {
     return <Auth onSuccess={refreshUser} />;
   }
 
-  // Primeiro Acesso via Google: solicita Username E Senha
+  // Verifica se o utilizador autenticado veio pelo Google OAuth
+  const isGoogleUser = session?.user?.app_metadata?.provider === 'google';
+
   if (!profile || !profile.username) {
+    if (!isGoogleUser) {
+      return (
+        <main className="min-h-screen flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--accent)]"></div>
+            <span className="text-xs text-[var(--text-muted)] font-medium">A sincronizar perfil...</span>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl space-y-5 animate-fade-in">
@@ -418,7 +558,7 @@ export default function Home() {
               <AppleEmoji emoji="🎉" size={20} />
             </h2>
             <p className="text-xs text-[var(--text-muted)] mt-1.5 leading-relaxed">
-              Defina seu @username e uma senha. Assim você poderá acessar sua conta usando seu Google ou diretamente seu nome de usuário.
+              Defina seu @username e uma palavra-passe para aceder via Google ou diretamente com o seu utilizador.
             </p>
           </div>
 
@@ -442,7 +582,7 @@ export default function Home() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Definir uma senha</label>
+              <label className="block text-[11px] font-bold text-[var(--text-main)] mb-1">Definir uma palavra-passe</label>
               <input
                 type="password"
                 required
@@ -459,7 +599,7 @@ export default function Home() {
               disabled={savingUsername}
               className="w-full py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold text-xs transition-all shadow-md disabled:opacity-50"
             >
-              {savingUsername ? 'Configurando conta...' : 'Concluir Cadastro'}
+              {savingUsername ? 'A configurar...' : 'Concluir Registo'}
             </button>
           </form>
 
@@ -492,9 +632,7 @@ export default function Home() {
         }`}
         onClick={() => setOpenDropdownGoalId(null)}
       >
-        {/* ========================================================
-            BARRA LATERAL ESQUERDA (DESKTOP md:flex)
-        ======================================================== */}
+        {/* Barra Lateral Desktop */}
         <aside className="hidden md:flex w-16 sm:w-20 h-full flex-shrink-0 flex-col items-center justify-between py-6 px-2 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] backdrop-blur-xl z-30 select-none">
           <div className="flex flex-col items-center gap-6 w-full">
             <button
@@ -528,11 +666,11 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => handleNavClick('transacoes')}
-              title="Aceder a Transações"
+              onClick={() => setIsAccountsModalOpen(true)}
+              title="Gerir Carteiras e Bancos"
               className="w-11 h-11 rounded-2xl flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] hover:text-[var(--text-main)] transition-all"
             >
-              <AppleEmoji emoji={theme === 'vintage_cute' ? '📖' : '💳'} size={20} />
+              <AppleEmoji emoji="🏦" size={20} />
             </button>
           </div>
 
@@ -545,9 +683,7 @@ export default function Home() {
           </button>
         </aside>
 
-        {/* ========================================================
-            CONTENTOR PRINCIPAL (CABEÇALHO LIQUID GLASS + PAINEL)
-        ======================================================== */}
+        {/* Painel Principal */}
         <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
           <header className="flex-shrink-0 w-full bg-[var(--bg-surface)]/85 backdrop-blur-2xl border-b border-[var(--border-subtle)] shadow-[0_8px_32px_0_rgba(0,0,0,0.18)] z-30 transition-all">
             <div className="px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2">
@@ -555,7 +691,7 @@ export default function Home() {
                 <Logo size={32} />
               </div>
 
-              {/* Pílula Central para Desktop */}
+              {/* Pílula Desktop */}
               <nav
                 translate="no"
                 className="notranslate hidden md:flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-inner"
@@ -577,8 +713,32 @@ export default function Home() {
                 ))}
               </nav>
 
-              {/* Botões do Topo */}
+              {/* Ações do Topo */}
               <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPrivateMode(!isPrivateMode)}
+                  title={isPrivateMode ? 'Exibir valores' : 'Ocultar valores'}
+                  className={`w-8 h-8 rounded-full border border-[var(--border-subtle)] flex items-center justify-center text-xs transition-all active:scale-95 ${
+                    isPrivateMode
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                      : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  <AppleEmoji emoji={isPrivateMode ? '🙈' : '👁️'} size={14} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveSidebarView(activeSidebarView === 'coming_soon' ? 'dashboard' : 'coming_soon')}
+                  className="md:hidden relative w-8 h-8 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center text-xs active:scale-95"
+                  title="Metas Partilhadas?"
+                >
+                  <AppleEmoji emoji="👥" size={14} />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />
+                </button>
+
                 <button
                   onClick={() => setIsTxModalOpen(true)}
                   className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
@@ -590,15 +750,11 @@ export default function Home() {
 
                 <button
                   onClick={() => setIsProfileModalOpen(true)}
-                  className="flex items-center gap-2 p-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-card)] hover:border-[var(--accent)] border border-[var(--border-subtle)] transition-all shadow-sm active:scale-95 group"
+                  className="flex items-center gap-2 p-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-card)] hover:border-[var(--accent)] border border-[var(--border-subtle)] transition-all shadow-sm active:scale-95"
                 >
                   <div className="w-7 h-7 rounded-full bg-[var(--accent-light)] text-[var(--accent)] flex items-center justify-center font-black text-xs overflow-hidden">
                     {profile.avatar_url ? (
-                      <img
-                        src={profile.avatar_url}
-                        alt={profile.username}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
                     ) : (
                       profile.username?.charAt(0).toUpperCase()
                     )}
@@ -621,14 +777,11 @@ export default function Home() {
             </div>
           </header>
 
-          {/* ÁREA INTERNA COM ROLAGEM INDEPENDENTE */}
-          <div
-            ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8 pb-12"
-          >
+          {/* Área com Deslocamento Interno */}
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-8 pb-12">
             <div className="max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
               {activeSidebarView === 'coming_soon' ? (
-                /* ECRÃ DE SUSPENSE */
+                /* Ecrã de Suspense */
                 <div className="py-16 sm:py-24 flex flex-col items-center justify-center text-center animate-fade-in space-y-6 px-2">
                   <div className="relative flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24">
                     <div className="absolute inset-0 rounded-full border-4 border-[var(--accent-light)] border-t-[var(--accent)] animate-spin" />
@@ -649,7 +802,7 @@ export default function Home() {
                       <AppleEmoji emoji="✨" size={15} />
                     </p>
                     <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed pt-1">
-                      Imagine poupar para viagens, remodelações ou sonhos a dois e em grupo, com saldos e progresso sincronizados em tempo real na mesma caixinha.
+                      Em breve poderá guardar dinheiro em conjunto com o seu parceiro(a) ou equipa, com saldo e metas sincronizados em tempo real na mesma caixinha.
                     </p>
                   </div>
 
@@ -661,272 +814,349 @@ export default function Home() {
                   </button>
                 </div>
               ) : (
-                /* PAINEL FINANCEIRO */
+                /* Painel Principal */
                 <>
-                  <div className="px-1">
-                    <h2 className="text-xl sm:text-2xl font-black text-[var(--text-main)] tracking-tight flex items-center gap-2">
-                      <span>Olá, {profile.full_name?.split(' ')[0] || profile.username}!</span>
-                      {theme === 'vintage_cute' && <AppleEmoji emoji="🌸" size={20} />}
-                    </h2>
-                    <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5">
-                      {theme === 'day' ? (
-                        <>
-                          <span>Vamos planear o dia sob céu limpo?</span>
-                          <AppleEmoji emoji="☀️" size={14} />
-                        </>
-                      ) : theme === 'interestelar' ? (
-                        <>
-                          <span>A navegar pelas suas órbitas financeiras</span>
-                          <AppleEmoji emoji="🚀" size={14} />
-                        </>
-                      ) : (
-                        <>
-                          <span>Tudo com muito carinho, fofura e organização</span>
-                          <AppleEmoji emoji="🌸" size={14} />
-                          <AppleEmoji emoji="✨" size={14} />
-                        </>
-                      )}
+                  <div className="px-1 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-black text-[var(--text-main)] tracking-tight flex items-center gap-2">
+                        <span>Olá, {profile.full_name?.split(' ')[0] || profile.username}!</span>
+                        {theme === 'vintage_cute' && <AppleEmoji emoji="🌸" size={20} />}
+                      </h2>
+                      <div className="text-[11px] sm:text-xs font-semibold text-[var(--text-muted)] mt-0.5 flex items-center gap-1.5">
+                        <span>Painel Financeiro Unificado</span>
+                        
+                      </div>
                     </div>
+
+                    <button
+                      onClick={() => setIsAccountsModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold text-[var(--text-main)] hover:bg-[var(--accent-light)] transition-all shadow-sm"
+                    >
+                      <AppleEmoji emoji="🏦" size={14} />
+                      <span>Gerir Carteiras ({accounts.length})</span>
+                    </button>
                   </div>
 
                   {/* Cartões de Métricas */}
                   <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-[var(--text-muted)] flex items-center gap-1">
-                        {theme === 'vintage_cute' ? (
-                          <AppleEmoji emoji="🌸" size={12} />
-                        ) : (
-                          <AppleEmoji emoji="💰" size={12} />
-                        )}
-                        <span>Saldo</span>
+                        <AppleEmoji emoji="💰" size={12} />
+                        <span>Saldo Total</span>
                       </span>
                       <p className={`text-lg sm:text-2xl font-black ${currentBalance >= 0 ? 'text-[var(--text-main)]' : 'text-rose-500'}`}>
-                        R$ {currentBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {formatMoney(currentBalance)}
                       </p>
                     </div>
 
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-[var(--accent)] flex items-center gap-1">
-                        {theme === 'vintage_cute' ? (
-                          <AppleEmoji emoji="🎀" size={12} />
-                        ) : (
-                          <AppleEmoji emoji="📦" size={12} />
-                        )}
-                        <span>Caixinhas</span>
+                        <AppleEmoji emoji="📦" size={12} />
+                        <span>Em Caixinhas</span>
                       </span>
                       <p className="text-lg sm:text-2xl font-black text-[var(--accent)]">
-                        R$ {totalInGoals.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {formatMoney(totalInGoals)}
                       </p>
                     </div>
 
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-emerald-500 flex items-center gap-1">
-                        {theme === 'vintage_cute' && <AppleEmoji emoji="✨" size={12} />}
+                        <AppleEmoji emoji="📈" size={12} />
                         <span>Entradas</span>
                       </span>
                       <p className="text-lg sm:text-2xl font-black text-emerald-500">
-                        + R$ {totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {isPrivateMode ? '••••••' : `+ ${formatMoney(totalIncome, 'R$ ')}`}
                       </p>
                     </div>
 
                     <div className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-1">
                       <span className="text-[9px] sm:text-[10px] font-bold tracking-wider uppercase text-rose-500 flex items-center gap-1">
-                        {theme === 'vintage_cute' && <AppleEmoji emoji="🍓" size={12} />}
+                        <AppleEmoji emoji="📉" size={12} />
                         <span>Saídas</span>
                       </span>
                       <p className="text-lg sm:text-2xl font-black text-rose-500">
-                        - R$ {totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {isPrivateMode ? '••••••' : `- ${formatMoney(totalExpense, 'R$ ')}`}
                       </p>
                     </div>
                   </section>
 
-                  {/* Gráfico de Distribuição */}
-                  <section
-                    ref={analisesSectionRef}
-                    className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4"
-                  >
-                    <div>
-                      <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
-                        {theme === 'vintage_cute' ? (
-                          <>
-                            <AppleEmoji emoji="🌸" size={16} />
-                            <span>Para onde foi o dinheiro?</span>
-                          </>
-                        ) : (
-                          <>
-                            <AppleEmoji emoji="📊" size={16} />
-                            <span>Distribuição de Despesas</span>
-                          </>
-                        )}
-                      </h2>
-                      <p className="text-[11px] sm:text-xs text-[var(--text-muted)]">Visão percentual dos gastos por categoria</p>
+                  {/* Seleção por Carteira / Banco */}
+                  <section className="p-4 sm:p-5 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1.5">
+                        <AppleEmoji emoji="🏦" size={16} />
+                        <span>Onde está o dinheiro</span>
+                      </span>
+                      <button
+                        onClick={() => setIsAccountsModalOpen(true)}
+                        className="text-[11px] font-bold text-[var(--accent)] hover:underline"
+                      >
+                        + Configurar Bancos
+                      </button>
                     </div>
-                    <CategoryChart transactions={transactions} />
+
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                      <button
+                        onClick={() => setFilterAccount('all')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0 border ${
+                          filterAccount === 'all'
+                            ? 'bg-[var(--accent)] text-white border-transparent'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border-subtle)]'
+                        }`}
+                      >
+                        <span>Todas as Carteiras</span>
+                      </button>
+                      {accounts.map((acc) => {
+                        const accBalance = transactions
+                          .filter((t) => t.account_id === acc.id)
+                          .reduce((accTotal, t) => accTotal + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0);
+
+                        return (
+                          <button
+                            key={acc.id}
+                            onClick={() => setFilterAccount(filterAccount === acc.id ? 'all' : acc.id)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 border ${
+                              filterAccount === acc.id
+                                ? 'bg-[var(--accent)] text-white border-transparent'
+                                : 'bg-[var(--bg-card)] text-[var(--text-main)] border-[var(--border-subtle)]'
+                            }`}
+                          >
+                            <span>{acc.icon}</span>
+                            <span>{acc.name}</span>
+                            <span className="opacity-75 font-normal">({formatMoney(accBalance)})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </section>
 
-                  {/* Caixinhas e Metas */}
-                  <section
-                    ref={metasSectionRef}
-                    className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4 sm:space-y-5"
-                  >
+                  {/* Distribuição e Gráfico Temporal Divididos */}
+                  <section ref={analisesSectionRef} className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
+                          <AppleEmoji emoji="📊" size={16} />
+                          <span>Análise de Despesas & Fluxo</span>
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={() => setIsChartsMinimized(!isChartsMinimized)}
+                          className="px-2 py-0.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                        >
+                          {isChartsMinimized ? 'Expandir' : 'Minimizar'}
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-[var(--text-muted)]">Métricas em tempo real</span>
+                    </div>
+
+                    {!isChartsMinimized && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1">
+                        <div className="space-y-2 p-4 rounded-2xl bg-[var(--bg-card)]/50 border border-[var(--border-subtle)]">
+                          <span className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1">
+                            <AppleEmoji emoji="🍕" size={14} />
+                            <span>Por Categoria</span>
+                          </span>
+                          <CategoryChart transactions={transactions} />
+                        </div>
+
+                        <div className="space-y-2 p-4 rounded-2xl bg-[var(--bg-card)]/50 border border-[var(--border-subtle)]">
+                          <span className="text-xs font-bold text-[var(--text-main)] flex items-center gap-1">
+                            <AppleEmoji emoji="📈" size={14} />
+                            <span>Evolução Temporal</span>
+                          </span>
+                          <TimeChart transactions={transactions} />
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Caixinhas com Minimização */}
+                  <section ref={metasSectionRef} className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4 sm:space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
-                          {theme === 'vintage_cute' ? (
-                            <>
-                              <AppleEmoji emoji="🎀" size={16} />
-                              <span>Caixinhas e Sonhos</span>
-                            </>
-                          ) : (
-                            <>
-                              <AppleEmoji emoji="📦" size={16} />
-                              <span>Caixinhas e Objetivos</span>
-                            </>
-                          )}
-                        </h2>
-                        <p className="text-[11px] sm:text-xs text-[var(--text-muted)]">O montante reservado sai do saldo corrente</p>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
+                            <AppleEmoji emoji="📦" size={16} />
+                            <span>Caixinhas e Objetivos</span>
+                          </h2>
+                          <button
+                            type="button"
+                            onClick={() => setIsGoalsMinimized(!isGoalsMinimized)}
+                            className="px-2 py-0.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                          >
+                            {isGoalsMinimized ? 'Expandir' : 'Minimizar'}
+                          </button>
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-[var(--text-muted)]">O valor sai do saldo corrente e fica guardado</p>
                       </div>
                       <button
                         onClick={() => setIsGoalModalOpen(true)}
                         className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold transition-all shadow-md active:scale-95"
                       >
-                        {theme === 'vintage_cute' ? (
-                          <AppleEmoji emoji="✨" size={13} />
-                        ) : (
-                          <AppleEmoji emoji="➕" size={11} />
-                        )}
+                        <AppleEmoji emoji="➕" size={11} />
                         <span>Nova Caixinha</span>
                       </button>
                     </div>
 
-                    {loadingGoals ? (
-                      <div className="py-6 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
-                        <AppleEmoji emoji="⏳" size={16} />
-                        <span>A carregar caixinhas...</span>
-                      </div>
-                    ) : goals.length === 0 ? (
-                      <div className="py-8 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
-                        <p className="text-xs font-medium text-[var(--text-muted)]">Ainda não tem caixinhas criadas.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                        {goals.map((g) => {
-                          const current = Number(g.current_amount || 0);
-                          const target = Number(g.target_amount || 1);
-                          const progress = Math.min(Math.round((current / target) * 100), 100);
-                          const isDropdownOpen = openDropdownGoalId === g.id;
+                    {!isGoalsMinimized && (
+                      <>
+                        {loadingGoals ? (
+                          <div className="py-6 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
+                            <AppleEmoji emoji="⏳" size={16} />
+                            <span>A carregar caixinhas...</span>
+                          </div>
+                        ) : goals.length === 0 ? (
+                          <div className="py-8 text-center rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)]">Ainda não tem caixinhas criadas.</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            {goals.map((g) => {
+                              const current = Number(g.current_amount || 0);
+                              const target = Number(g.target_amount || 1);
+                              const progress = Math.min(Math.round((current / target) * 100), 100);
+                              const isDropdownOpen = openDropdownGoalId === g.id;
 
-                          return (
-                            <div
-                              key={g.id}
-                              className="p-4 rounded-3xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3 relative"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <h4 className="text-xs font-bold text-[var(--text-main)]">{g.title}</h4>
-                                  <span className="text-[10px] text-[var(--text-muted)]">
-                                    {g.category} {g.deadline ? `• até ${g.deadline}` : ''}
-                                  </span>
-                                </div>
-
-                                <div className="flex items-center gap-2 relative">
-                                  <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
-
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenDropdownGoalId(isDropdownOpen ? null : g.id);
-                                    }}
-                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] transition-colors text-sm font-bold"
-                                    title="Opções da caixinha"
-                                  >
-                                    ⋯
-                                  </button>
-
-                                  {isDropdownOpen && (
-                                    <div
-                                      className="absolute right-0 top-8 z-30 w-36 py-1 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xl animate-fade-in"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingGoal(g);
-                                          setOpenDropdownGoalId(null);
-                                        }}
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[var(--accent-light)] flex items-center gap-2 transition-colors"
-                                      >
-                                        <AppleEmoji emoji="✏️" size={14} />
-                                        <span>Editar</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => promptDeleteGoal(g)}
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors"
-                                      >
-                                        <AppleEmoji emoji="🗑️" size={14} />
-                                        <span>Eliminar</span>
-                                      </button>
+                              return (
+                                <div key={g.id} className="p-4 rounded-3xl bg-[var(--bg-card)] border border-[var(--border-subtle)] space-y-3 relative">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h4 className="text-xs font-bold text-[var(--text-main)]">{g.title}</h4>
+                                      <span className="text-[10px] text-[var(--text-muted)]">
+                                        {g.category} {g.deadline ? `• até ${g.deadline}` : ''}
+                                      </span>
                                     </div>
-                                  )}
+                                    <div className="flex items-center gap-2 relative">
+                                      <span className="text-xs font-black text-[var(--accent)]">{progress}%</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenDropdownGoalId(isDropdownOpen ? null : g.id);
+                                        }}
+                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--accent-light)] text-sm font-bold"
+                                      >
+                                        ⋯
+                                      </button>
+                                      {isDropdownOpen && (
+                                        <div
+                                          className="absolute right-0 top-8 z-30 w-36 py-1 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xl animate-fade-in"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingGoal(g);
+                                              setOpenDropdownGoalId(null);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[var(--accent-light)] flex items-center gap-2"
+                                          >
+                                            <AppleEmoji emoji="✏️" size={14} />
+                                            <span>Editar</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => promptDeleteGoal(g)}
+                                            className="w-full text-left px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 flex items-center gap-2"
+                                          >
+                                            <AppleEmoji emoji="🗑️" size={14} />
+                                            <span>Eliminar</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="w-full h-2.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden p-0.5">
+                                    <div className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full" style={{ width: `${progress}%` }}></div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                    <p className="text-[11px] text-[var(--text-muted)] font-medium">
+                                      {formatMoney(current)} de {formatMoney(target)}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => setManagingGoal(g)}
+                                      className="px-3 py-1.5 rounded-full bg-[var(--accent-light)] text-[var(--accent)] text-[11px] font-bold hover:opacity-80 transition-all shadow-sm"
+                                    >
+                                      Guardar / Resgatar
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-
-                              <div className="w-full h-2.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] overflow-hidden p-0.5">
-                                <div
-                                  className="h-full bg-[var(--accent)] transition-all duration-500 rounded-full"
-                                  style={{ width: `${progress}%` }}
-                                ></div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                                <p className="text-[11px] text-[var(--text-muted)] font-medium">
-                                  R$ {current.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} de R${' '}
-                                  {target.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </p>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setManagingGoal(g)}
-                                  className="px-3 py-1.5 rounded-full bg-[var(--accent-light)] text-[var(--accent)] text-[11px] font-bold hover:opacity-80 transition-all shadow-sm"
-                                >
-                                  Guardar / Resgatar
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     )}
                   </section>
 
-                  {/* Histórico e Transações */}
-                  <section
-                    ref={transacoesSectionRef}
-                    className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4 sm:space-y-5"
-                  >
+                  {/* Extrato com Separação Diária e Períodos */}
+                  <section ref={transacoesSectionRef} className="p-4 sm:p-6 rounded-3xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-sm space-y-4 sm:space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
-                          {theme === 'vintage_cute' ? (
-                            <>
-                              <AppleEmoji emoji="✨" size={16} />
-                              <span>Extrato Fofinho</span>
-                            </>
-                          ) : (
-                            <>
-                              <AppleEmoji emoji="💳" size={16} />
-                              <span>Transações Recentes</span>
-                            </>
-                          )}
-                        </h2>
-                        <p className="text-[11px] sm:text-xs text-[var(--text-muted)]">Filtre e consulte as suas movimentações</p>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm sm:text-base font-bold text-[var(--text-main)] flex items-center gap-1.5">
+                            <AppleEmoji emoji="💳" size={16} />
+                            <span>Extrato de Movimentações</span>
+                          </h2>
+                          <button
+                            type="button"
+                            onClick={() => setIsTransactionsMinimized(!isTransactionsMinimized)}
+                            className="px-2 py-0.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                          >
+                            {isTransactionsMinimized ? 'Expandir' : 'Minimizar'}
+                          </button>
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-[var(--text-muted)]">
+                          {filteredTransactions.length} registo(s) encontrado(s)
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center p-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                          <button
+                            onClick={() => setFilterPeriod('all')}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
+                              filterPeriod === 'all' ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'
+                            }`}
+                          >
+                            Tudo
+                          </button>
+                          <button
+                            onClick={() => setFilterPeriod('week')}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
+                              filterPeriod === 'week' ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'
+                            }`}
+                          >
+                            Semana
+                          </button>
+                          <button
+                            onClick={() => setFilterPeriod('month')}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${
+                              filterPeriod === 'month' ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'
+                            }`}
+                          >
+                            Mês
+                          </button>
+                        </div>
+
+                        <select
+                          value={sortOrder}
+                          onChange={(e: any) => setSortOrder(e.target.value)}
+                          className="px-3 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none"
+                        >
+                          <option value="date_desc">Mais Recentes</option>
+                          <option value="date_asc">Mais Antigas</option>
+                          <option value="amount_desc">Maior Valor</option>
+                          <option value="amount_asc">Menor Valor</option>
+                        </select>
+
                         <button
                           onClick={handleExportCSV}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[var(--bg-card)] hover:bg-[var(--accent-light)] text-[var(--text-main)] border border-[var(--border-subtle)] text-xs font-bold transition-all shadow-sm active:scale-95"
+                          title="Exportar tabela completa"
                         >
                           <AppleEmoji emoji="📥" size={14} />
                           <span>CSV</span>
@@ -934,129 +1164,161 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          placeholder="Pesquisar por título..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full px-4 py-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
-                        />
-                      </div>
+                    {!isTransactionsMinimized && (
+                      <>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              placeholder="Pesquisar por título..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="w-full px-4 py-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
+                            />
+                          </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] flex-1 sm:flex-none justify-center">
-                          <button
-                            onClick={() => setFilterType('all')}
-                            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                              filterType === 'all'
-                                ? 'bg-[var(--accent)] text-white shadow-sm'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                            }`}
-                          >
-                            Todas
-                          </button>
-                          <button
-                            onClick={() => setFilterType('income')}
-                            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                              filterType === 'income'
-                                ? 'bg-emerald-500 text-white shadow-sm'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                            }`}
-                          >
-                            +
-                          </button>
-                          <button
-                            onClick={() => setFilterType('expense')}
-                            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                              filterType === 'expense'
-                                ? 'bg-rose-500 text-white shadow-sm'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                            }`}
-                          >
-                            -
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                              <button
+                                onClick={() => setFilterType('all')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                                  filterType === 'all' ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'
+                                }`}
+                              >
+                                Todas
+                              </button>
+                              <button
+                                onClick={() => setFilterType('income')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                                  filterType === 'income' ? 'bg-emerald-500 text-white shadow-sm' : 'text-[var(--text-muted)]'
+                                }`}
+                              >
+                                +
+                              </button>
+                              <button
+                                onClick={() => setFilterType('expense')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                                  filterType === 'expense' ? 'bg-rose-500 text-white shadow-sm' : 'text-[var(--text-muted)]'
+                                }`}
+                              >
+                                -
+                              </button>
+                            </div>
+
+                            <select
+                              value={filterCategory}
+                              onChange={(e) => setFilterCategory(e.target.value)}
+                              className="px-3 py-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none select-text"
+                            >
+                              <option value="all">Categorias</option>
+                              <option value="Geral">Geral</option>
+                              <option value="Caixinhas">Caixinhas</option>
+                              <option value="Alimentação">Alimentação</option>
+                              <option value="Transporte">Transporte</option>
+                              <option value="Lazer">Lazer</option>
+                              <option value="Trabalho">Trabalho</option>
+                              <option value="Contas">Contas</option>
+                            </select>
+                          </div>
                         </div>
 
-                        <select
-                          value={filterCategory}
-                          onChange={(e) => setFilterCategory(e.target.value)}
-                          className="px-3 py-2 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs text-[var(--text-main)] focus:outline-none focus:border-[var(--accent)] select-text"
-                        >
-                          <option value="all">Categorias</option>
-                          <option value="Geral">Geral</option>
-                          <option value="Caixinhas">Caixinhas</option>
-                          <option value="Alimentação">Alimentação</option>
-                          <option value="Transporte">Transporte</option>
-                          <option value="Lazer">Lazer</option>
-                          <option value="Trabalho">Trabalho</option>
-                          <option value="Contas">Contas</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {loadingTx ? (
-                      <div className="py-8 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
-                        <AppleEmoji emoji="⏳" size={16} />
-                        <span>A carregar movimentações...</span>
-                      </div>
-                    ) : filteredTransactions.length === 0 ? (
-                      <div className="py-8 text-center rounded-3xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
-                        <p className="text-xs font-medium text-[var(--text-muted)]">Nenhuma transação encontrada.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {filteredTransactions.map((tx) => (
-                          <div
-                            key={tx.id}
-                            className="flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                                  tx.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
-                                }`}
-                              >
-                                {tx.type === 'income' ? '↓' : '↑'}
-                              </div>
-                              <div className="truncate">
-                                <p className="text-xs font-bold text-[var(--text-main)] truncate">{tx.title}</p>
-                                <p className="text-[10px] text-[var(--text-muted)]">
-                                  {tx.category} • {tx.date}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span
-                                className={`text-xs font-bold ${
-                                  tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'
-                                }`}
-                              >
-                                {tx.type === 'income' ? '+' : '-'} R${' '}
-                                {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </span>
-
-                              <button
-                                onClick={() => setEditingTransaction(tx)}
-                                title="Editar movimentação"
-                                className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-[var(--accent)] transition-colors"
-                              >
-                                <AppleEmoji emoji="✏️" size={12} />
-                              </button>
-
-                              <button
-                                onClick={() => promptDeleteTransaction(tx)}
-                                title="Eliminar movimentação"
-                                className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 transition-colors"
-                              >
-                                ✕
-                              </button>
-                            </div>
+                        {loadingTx ? (
+                          <div className="py-8 text-center text-xs text-[var(--text-muted)] flex items-center justify-center gap-2">
+                            <AppleEmoji emoji="⏳" size={16} />
+                            <span>A carregar movimentações...</span>
                           </div>
-                        ))}
-                      </div>
+                        ) : groupedTransactionsByDay.length === 0 ? (
+                          <div className="py-8 text-center rounded-3xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-card)]">
+                            <p className="text-xs font-medium text-[var(--text-muted)]">Nenhuma transação encontrada com esses filtros.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4 pt-1">
+                            {groupedTransactionsByDay.map((group) => {
+                              const dayTotal = group.items.reduce(
+                                (acc, tx) => acc + (tx.type === 'income' ? Number(tx.amount) : -Number(tx.amount)),
+                                0
+                              );
+
+                              return (
+                                <div key={group.date} className="space-y-2">
+                                  <div className="flex items-center justify-between px-2 pt-2 border-b border-[var(--border-subtle)] pb-1">
+                                    <span className="text-xs font-black text-[var(--text-main)] flex items-center gap-1.5">
+                                      <AppleEmoji emoji="📅" size={13} />
+                                      <span>{group.date.split('-').reverse().join('/')}</span>
+                                    </span>
+                                    <span className="text-[10px] font-bold text-[var(--text-muted)]">
+                                      Balanço do dia:{' '}
+                                      <strong className={dayTotal >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                                        {formatMoney(dayTotal)}
+                                      </strong>
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-1.5">
+                                    {group.items.map((tx) => {
+                                      const acc = tx.account_id ? accountMap.get(tx.account_id) : null;
+
+                                      return (
+                                        <div
+                                          key={tx.id}
+                                          className="flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors"
+                                        >
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            <div
+                                              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                                                tx.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                                              }`}
+                                            >
+                                              {tx.type === 'income' ? '↓' : '↑'}
+                                            </div>
+                                            <div className="truncate">
+                                              <p className="text-xs font-bold text-[var(--text-main)] truncate">{tx.title}</p>
+                                              <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+                                                <span>{tx.category}</span>
+                                                {acc && (
+                                                  <>
+                                                    <span>•</span>
+                                                    <span className="font-bold text-[var(--text-main)] flex items-center gap-0.5">
+                                                      <span>{acc.icon}</span>
+                                                      <span>{acc.name}</span>
+                                                    </span>
+                                                  </>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                            <span className={`text-xs font-bold ${tx.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                              {isPrivateMode
+                                                ? '••••••'
+                                                : `${tx.type === 'income' ? '+' : '-'} R$ ${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                                            </span>
+
+                                            <button
+                                              onClick={() => setEditingTransaction(tx)}
+                                              className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-[var(--accent)]"
+                                            >
+                                              <AppleEmoji emoji="✏️" size={12} />
+                                            </button>
+
+                                            <button
+                                              onClick={() => promptDeleteTransaction(tx)}
+                                              className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     )}
                   </section>
                 </>
@@ -1066,7 +1328,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* JANELAS MODAIS */}
+      {/* Janelas Modais */}
       <ProfileModal
         isOpen={isProfileModalOpen}
         profile={profile}
@@ -1079,6 +1341,14 @@ export default function Home() {
         onAccountDeleted={handleLogout}
       />
 
+      <ManageAccountsModal
+        isOpen={isAccountsModalOpen}
+        userId={session.user.id}
+        accounts={accounts}
+        onClose={() => setIsAccountsModalOpen(false)}
+        onSuccess={() => fetchAccounts(session.user.id)}
+      />
+
       <ResetPasswordModal
         isOpen={isResetPasswordOpen}
         onSuccess={() => setIsResetPasswordOpen(false)}
@@ -1087,6 +1357,7 @@ export default function Home() {
 
       <NewTransactionModal
         userId={session.user.id}
+        accounts={accounts}
         isOpen={isTxModalOpen}
         onClose={() => setIsTxModalOpen(false)}
         onSuccess={() => fetchTransactions(session.user.id)}
@@ -1094,6 +1365,7 @@ export default function Home() {
 
       <EditTransactionModal
         transaction={editingTransaction}
+        accounts={accounts}
         isOpen={Boolean(editingTransaction)}
         onClose={() => setEditingTransaction(null)}
         onSuccess={() => {
